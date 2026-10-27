@@ -1,4 +1,4 @@
-# 智能记账 (Bookkeeping) · v1.2.0 HyperOS 设计版
+# 智能记账 (Bookkeeping) · v1.3.0 HyperOS 设计版
 
 基于 Android 原生现代化架构（Kotlin 2.0 + Jetpack Compose + Room + Material Design 3），专为 **小米 15 Pro (HyperOS 2 / Android 15)** 深度调优的极简高性能自动记账应用。
 
@@ -14,6 +14,8 @@
    * **自定义分类**：支出/收入分类可新建（选图标、选颜色）、编辑、删除；删除后历史账单自动归入「其他」。
    * **备注与图片**：每笔账可写备注、附最多 9 张图片（小票/发票），详情页全屏查看、缩放。
    * **明细**：渐变月度看板 + 月度预算进度与日均可用、按天分组卡片、全局搜索。
+   * **日历视图（v1.3.0）**：明细页「列表 / 日历」切换并记住选择；月历格子按当日支出深浅着色，左右滑动切月，点选某天看当天账单。
+   * **批量删除（v1.3.0）**：长按账单或点「批量管理」进入多选，支持全选（列表为当月、日历为当天）后一次删除。
    * **统计**：周/月/年翻页、支出/收入切换、趋势柱状图、分类环形图与可展开排行。
 2. **单人专属账本**：
    * 彻底摒弃复杂的多人分账与家庭共账逻辑，有且只有一本专属个人账本，开箱即记。
@@ -93,6 +95,6 @@ cd android
 ## 🔗 在线服务与重要链接
 
 * 📱 **应用下载与落地主页**：[https://leafy.fxxkopenai.com/ledger.html](https://leafy.fxxkopenai.com/ledger.html)
-* 📦 **APK 直链下载 (v1.2.0)**：[https://leafy.fxxkopenai.com/download/bookkeeping.apk](https://leafy.fxxkopenai.com/download/bookkeeping.apk)
+* 📦 **APK 直链下载 (v1.3.0)**：[https://leafy.fxxkopenai.com/download/bookkeeping.apk](https://leafy.fxxkopenai.com/download/bookkeeping.apk)
 * 📖 **工程交接与运维排错手册**：[docs/HANDOVER.md](docs/HANDOVER.md)
 * 📑 **底层调研与架构设计文档**：[docs/RESEARCH.md](docs/RESEARCH.md)

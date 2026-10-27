@@ -69,7 +69,8 @@ v1.2.0 起全部界面改为自绘 HyperOS 风格组件，不再使用 Material3
 | `ui/components/MiComponents.kt` | 基础组件 | `MiButton`（Primary/Secondary/Danger/DangerFilled/Soft）、`MiIconButton`、`MiChip`、`MiCard`、`MiListItem`、`MiSwitch`、`MiSegmented`（弹性滑块）、`MiTextField`、`MiTopBar`、`MiLargeTitle`；`miClickable` 为弹性缩放按压、`miRowClickable` 为整行高亮。 |
 | `ui/components/MiOverlays.kt` | 弹层 | `MiModal` 弹层基座在应用根层（`OverlayHostView`，由 `MainScreen` 提供 `LocalOverlayHost`）同一窗口内绘制，系统栏与键盘内边距与页面一致；在此之上有 `MiSheet`（底部面板，可下拉关闭）、`MiDialog`（底部悬浮对话框）、`ImageViewer`（全屏看图，缩放/双击/左右滑）、`MiDatePickerSheet`、`MiMonthPickerSheet`。**不要改回系统 Dialog 窗口**：Dialog 窗口在 edge-to-edge 下状态栏遮罩与导航栏内边距不可靠。 |
 | `ui/main/MainScreen.kt` | 主框架 | 4 Tab（明细/统计/资产/我的）+ 中间悬浮「＋」按钮；二级页面（记一笔/编辑、分类管理、搜索）以页面栈叠加并带进退场动画；账单详情面板在此统一打开。 |
-| `ui/detail/DetailScreen.kt` | 明细 | 大标题月份选择、渐变看板（支出/收入/结余/预算进度与日均可用）、快捷入口、按天分组卡片。 |
+| `ui/detail/DetailScreen.kt` | 明细 | 大标题月份选择、渐变看板（支出/收入/结余/预算进度与日均可用）、快捷入口、按天分组卡片；「列表 / 日历」视图切换（`AppPrefs.detailViewMode` 记忆）；长按或「批量管理」进入多选，全选范围为当前可见账单（列表=当月，日历=选中日），批量删除走 `TransactionDao.markDeletedIds` 并清理图片。多选时通过 `onSelectionModeChange` 让 `MainScreen` 隐藏底部导航。 |
+| `ui/detail/CalendarView.kt` | 日历 | 参考 Period（暖月）首页月历：`HorizontalPager` 左右滑动切月（回看 120 个月、前看 12 个月），与年月状态双向同步；格子显示当日支出简写，底色按当月最大单日支出做深浅热力，今天描边、选中填充主色。 |
 | `ui/record/RecordEditorScreen.kt` | 记一笔 | 鲨鱼记账式 5 列分类宫格 + 自绘计算器键盘（`Calculator.kt`，支持 + - 连续计算，精确到分）、备注、多图（最多 9 张）、日期、账户、商家；新建支持「再记」。 |
 | `ui/record/TransactionDetailSheet.kt` | 账单详情 | 金额、分类、时间、账户、商家、单号、备注、图片、原始通知；编辑 / 删除（删除会同时清理图片文件）。 |
 | `ui/record/TransactionRow.kt` | 账单行 + 搜索 | `TransactionRow` 复用于明细、统计、搜索；`SearchScreen` 按商家/备注/分类/账户/金额搜索。 |
@@ -78,6 +79,10 @@ v1.2.0 起全部界面改为自绘 HyperOS 风格组件，不再使用 Material3
 | `ui/asset/AssetScreen.kt` | 资产 | 按支付渠道关键词归集本月流出/流入与累计笔数。 |
 | `ui/profile/ProfileScreen.kt` | 我的 | 账号卡片与统计、通知监听/无障碍/保活入口、分类管理、月度预算、账单导入、关于。 |
 | `ui/common/` | 共用 | `Format.kt` 金额与日期格式化；`BillImport.kt` 文件/粘贴导入与结果弹窗；`BudgetDialog.kt` 预算设置。 |
+
+### 1.0 应用图标
+
+自适应图标：`drawable/ic_launcher_background.xml`（蓝色渐变）+ `ic_launcher_foreground.xml`（白色小票、¥、金币，安全区内绘制）+ `ic_launcher_monochrome.xml`（主题图标剪影）。
 
 ### 1.1 数据模型（Room v4）
 
