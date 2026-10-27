@@ -77,13 +77,16 @@ cd android
 ```
 产物位置：`android/app/build/outputs/apk/debug/app-debug.apk`
 
-### 3. 一键部署至线上环境
-```bash
-# 拷贝产物至 dist 并部署
-cp android/app/build/outputs/apk/debug/app-debug.apk dist/bookkeeping-debug.apk
-scp dist/bookkeeping-debug.apk <YOUR_SERVER_HOST>:/tmp/bookkeeping.apk
-ssh <YOUR_SERVER_HOST> "sudo mv /tmp/bookkeeping.apk /opt/nuanyue/web/download/bookkeeping.apk && sudo chmod 644 /opt/nuanyue/web/download/bookkeeping.apk"
-```
+### 3. 发布到线上环境（生产服务器，nginx 根目录 `/opt/nuanyue/web`）
+线上同机还托管「暖阅」应用：`/api/version` 和 `/download/` 默认文件名都属于暖阅，**不要覆盖其文件**。记账只涉及以下三个文件：
+
+| 本地 | 线上 |
+|---|---|
+| `dist/bookkeeping-vX.Y.Z.apk` | `/opt/nuanyue/web/download/bookkeeping.apk` |
+| `server/web/download.html` | `/opt/nuanyue/web/ledger.html` |
+| 版本信息 JSON（versionName / size / sha256 / apkUrl） | `/opt/nuanyue/web/bookkeeping-version.json`（下载页读取） |
+
+覆盖前先把旧 APK 与 ledger.html 备份到 `~/backup/bookkeeping-<时间戳>/`。服务器地址与 SSH 凭据从私有密钥库获取，**不要写进仓库**。
 
 ---
 

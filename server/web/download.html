@@ -962,7 +962,7 @@
       window.addEventListener('hashchange', openFaqFromHash);
       openFaqFromHash();
 
-      // 从 /api/version 读取版本信息；失败时仅保留静态版本号
+      // 从 /bookkeeping-version.json 读取版本信息（同域 /api/version 属于其他应用）；失败时仅保留静态版本号
       function formatSize(size) {
         if (typeof size === 'number' && isFinite(size) && size > 0) {
           if (size > 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + ' MB';
@@ -1001,10 +1001,11 @@
       });
 
       if (window.fetch) {
-        fetch('/api/version', { cache: 'no-store', headers: { 'Accept': 'application/json' } })
+        fetch('/bookkeeping-version.json', { cache: 'no-store', headers: { 'Accept': 'application/json' } })
           .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
           .then(function (v) {
             if (!v || typeof v !== 'object') return;
+            if (typeof v.apkUrl === 'string' && v.apkUrl.indexOf('bookkeeping') < 0) return;
             if (typeof v.versionName === 'string' && /^[\w.\-]{1,32}$/.test(v.versionName)) {
               $('meta-version').textContent = 'v' + v.versionName.replace(/^v/i, '');
             }
