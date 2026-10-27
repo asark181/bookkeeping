@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">智能记账</string>
+    <string name="nls_service_label">智能记账通知监听</string>
+    <string name="accessibility_service_label">智能记账无障碍辅助</string>
+    <string name="accessibility_description">用于辅助识别微信、支付宝在未弹出系统通知时的支付与转账界面节点，全程离线本地识别，不读取密码与敏感隐私。</string>
+</resources>
