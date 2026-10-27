@@ -1,4 +1,4 @@
-# 智能记账 (Bookkeeping) · 钱迹 1:1 纯粹质感重构版
+# 智能记账 (Bookkeeping) · v1.2.0 HyperOS 设计版
 
 基于 Android 原生现代化架构（Kotlin 2.0 + Jetpack Compose + Room + Material Design 3），专为 **小米 15 Pro (HyperOS 2 / Android 15)** 深度调优的极简高性能自动记账应用。
 
@@ -8,11 +8,13 @@
 
 ## 🌟 核心特性
 
-1. **钱迹 1:1 纯粹 4-Tab 原生架构**：
-   * **明细 (Transactions)**：年月快速切换、3 列金融指标（支出/收入/结余）、按天时间线分组、Material 矢量分类图标与等宽数字对齐。
-   * **图表 (Charts)**：Compose 原生 Canvas 硬件加速绘制动态环形统计图，周/月/年多维度无感切换，分类排行榜平滑彩色进度条。
-   * **资产 (Assets)**：净资产总览、微信/支付宝/银行账户分组汇总与当月支出统计。
-   * **我的 (Profile)**：C 端标准账号密码登录/注册，通知常驻守护状态与全能导入入口。
+1. **v1.2.0 HyperOS 全新设计**（参考钱迹、鲨鱼记账）：
+   * 全部自绘组件替换安卓原生按钮/弹窗/输入框：大标题、大圆角卡片、柔和渐变、弹性按压动效、底部悬浮对话框，完整深色模式。
+   * **记一笔**：底部中间悬浮「＋」进入，5 列分类宫格 + 自绘计算器键盘（支持 + - 连续计算）、日期、账户、商家、「再记一笔」。
+   * **自定义分类**：支出/收入分类可新建（选图标、选颜色）、编辑、删除；删除后历史账单自动归入「其他」。
+   * **备注与图片**：每笔账可写备注、附最多 9 张图片（小票/发票），详情页全屏查看、缩放。
+   * **明细**：渐变月度看板 + 月度预算进度与日均可用、按天分组卡片、全局搜索。
+   * **统计**：周/月/年翻页、支出/收入切换、趋势柱状图、分类环形图与可展开排行。
 2. **单人专属账本**：
    * 彻底摒弃复杂的多人分账与家庭共账逻辑，有且只有一本专属个人账本，开箱即记。
 3. **全闭环生态通知感知**：
@@ -37,15 +39,16 @@
 │   └── app/src/
 │       ├── main/java/com/bookkeeping/app/
 │       │   ├── MainActivity.kt          # 入口 Activity，支持 ACTION_VIEW/SEND 流水接收
-│       │   ├── data/                    # Room 本地持久化 (TransactionRecord, AppDatabase)
+│       │   ├── data/                    # Room 持久化（账单、分类、迁移）、图片附件、偏好设置
 │       │   ├── parser/                  # 核心解析器 (CsvStatementImporter, NotificationParser)
 │       │   ├── service/                 # NotificationListenerService 监听器与 Watchdog 看门狗
-│       │   └── ui/                      # 钱迹 1:1 界面实现
-│       │       ├── main/                # MainScreen (4-Tab 导航) 与 AuthModalDialog
-│       │       ├── detail/              # DetailScreen (明细流水时间线)
-│       │       ├── chart/               # ChartScreen 与 DonutChart (Canvas 原生图表)
-│       │       ├── asset/               # AssetScreen (资产账户面板)
-│       │       └── profile/             # ProfileScreen (个人中心与设置)
+│       │   └── ui/                      # HyperOS 风格界面
+│       │       ├── theme/ components/       # 设计令牌、自绘组件与弹层宿主
+│       │       ├── main/                    # 4 Tab + 中间「＋」主框架与页面栈
+│       │       ├── detail/ chart/ asset/ profile/  # 四个主页面
+│       │       ├── record/                  # 记一笔键盘、账单详情、搜索
+│       │       ├── category/                # 分类管理与图标库
+│       │       └── common/                  # 格式化、账单导入、预算弹窗
 │       └── test/                        # 单元测试 (包含 XLSX 真实用户账单用例)
 ├── server/                              # 云端后端服务与 Web
 │   ├── app.py                           # FastAPI 后端服务 (端口 :8095)
@@ -87,6 +90,6 @@ ssh <YOUR_SERVER_HOST> "sudo mv /tmp/bookkeeping.apk /opt/nuanyue/web/download/b
 ## 🔗 在线服务与重要链接
 
 * 📱 **应用下载与落地主页**：[https://leafy.fxxkopenai.com/ledger.html](https://leafy.fxxkopenai.com/ledger.html)
-* 📦 **APK 直链下载 (v1.1.0)**：[https://leafy.fxxkopenai.com/download/bookkeeping.apk](https://leafy.fxxkopenai.com/download/bookkeeping.apk)
+* 📦 **APK 直链下载 (v1.2.0)**：[https://leafy.fxxkopenai.com/download/bookkeeping.apk](https://leafy.fxxkopenai.com/download/bookkeeping.apk)
 * 📖 **工程交接与运维排错手册**：[docs/HANDOVER.md](docs/HANDOVER.md)
 * 📑 **底层调研与架构设计文档**：[docs/RESEARCH.md](docs/RESEARCH.md)

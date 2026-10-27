@@ -59,15 +59,34 @@
 
 ## 三、 客户端核心模块详解
 
-### 1. 钱迹 1:1 四大主界面与组件
+### 1. HyperOS 设计系统与主界面（v1.2.0）
 
-| 模块路径 | 页面定位 | 核心交互与设计规范 |
+v1.2.0 起全部界面改为自绘 HyperOS 风格组件，不再使用 Material3 的 Button / AlertDialog / ModalBottomSheet / OutlinedTextField / NavigationBar 等原生控件外观。
+
+| 模块路径 | 定位 | 说明 |
 |---|---|---|
-| `ui/main/MainScreen.kt` | 底部导航容器 | 管理 `DETAIL`（明细）、`CHART`（图表）、`ASSET`（资产）、`PROFILE`（我的）四大 Tab 切换与底部 NavigationBar。 |
-| `ui/detail/DetailScreen.kt` | 核心明细流水 | 年月选择器（`2026年10月 ▾`）；本月支出、收入、结余三列金融看板；胶囊快捷操作（粘贴账单、选文件、记一笔）；按天分组时间线；纯矢量 Material 图标；点击条目弹出详情抽屉。 |
-| `ui/chart/ChartScreen.kt` | 原生统计分析 | 周期切换（周、月、年）；集成 `DonutChart.kt`（Jetpack Compose Canvas 硬件加速纯绘制，中心镂空显示支出总额）；分类排行榜平滑进度条与百分比。 |
-| `ui/asset/AssetScreen.kt` | 资产看板 | 净资产卡片；账户分组展示（现金/借记卡/信用卡/数字账户）；动态累计各支付渠道的当月收支。 |
-| `ui/profile/ProfileScreen.kt` | 个人中心 | 用户状态卡片；通知常驻服务开关；CSV/XLSX/ZIP 账单选取导入；标准 C 端 `AuthModalDialog` 登录/注册弹窗。 |
+| `ui/theme/Theme.kt` | 设计令牌 | `MiColors`（浅色 #F5F6F8 底 + 白卡片 + 小米蓝 #3482FF；深色纯黑底），通过 `Mi.colors` 读取；`AmountStyle` 为等宽数字（tnum）。 |
+| `ui/components/MiComponents.kt` | 基础组件 | `MiButton`（Primary/Secondary/Danger/DangerFilled/Soft）、`MiIconButton`、`MiChip`、`MiCard`、`MiListItem`、`MiSwitch`、`MiSegmented`（弹性滑块）、`MiTextField`、`MiTopBar`、`MiLargeTitle`；`miClickable` 为弹性缩放按压、`miRowClickable` 为整行高亮。 |
+| `ui/components/MiOverlays.kt` | 弹层 | `MiModal` 弹层基座在应用根层（`OverlayHostView`，由 `MainScreen` 提供 `LocalOverlayHost`）同一窗口内绘制，系统栏与键盘内边距与页面一致；在此之上有 `MiSheet`（底部面板，可下拉关闭）、`MiDialog`（底部悬浮对话框）、`ImageViewer`（全屏看图，缩放/双击/左右滑）、`MiDatePickerSheet`、`MiMonthPickerSheet`。**不要改回系统 Dialog 窗口**：Dialog 窗口在 edge-to-edge 下状态栏遮罩与导航栏内边距不可靠。 |
+| `ui/main/MainScreen.kt` | 主框架 | 4 Tab（明细/统计/资产/我的）+ 中间悬浮「＋」按钮；二级页面（记一笔/编辑、分类管理、搜索）以页面栈叠加并带进退场动画；账单详情面板在此统一打开。 |
+| `ui/detail/DetailScreen.kt` | 明细 | 大标题月份选择、渐变看板（支出/收入/结余/预算进度与日均可用）、快捷入口、按天分组卡片。 |
+| `ui/record/RecordEditorScreen.kt` | 记一笔 | 鲨鱼记账式 5 列分类宫格 + 自绘计算器键盘（`Calculator.kt`，支持 + - 连续计算，精确到分）、备注、多图（最多 9 张）、日期、账户、商家；新建支持「再记」。 |
+| `ui/record/TransactionDetailSheet.kt` | 账单详情 | 金额、分类、时间、账户、商家、单号、备注、图片、原始通知；编辑 / 删除（删除会同时清理图片文件）。 |
+| `ui/record/TransactionRow.kt` | 账单行 + 搜索 | `TransactionRow` 复用于明细、统计、搜索；`SearchScreen` 按商家/备注/分类/账户/金额搜索。 |
+| `ui/category/` | 分类 | `CategoryManageScreen` 新建/编辑（名称、图标、颜色）/删除；`CategoryVisuals.kt` 图标库与 `categoryVisual()` 外观查找（未知名称按关键词推断）。 |
+| `ui/chart/` | 统计 | 周/月/年 + 前后翻页、支出/收入切换、趋势柱状图（点按查看）、分类环形图与排行（点开查看该分类账单）。 |
+| `ui/asset/AssetScreen.kt` | 资产 | 按支付渠道关键词归集本月流出/流入与累计笔数。 |
+| `ui/profile/ProfileScreen.kt` | 我的 | 账号卡片与统计、通知监听/无障碍/保活入口、分类管理、月度预算、账单导入、关于。 |
+| `ui/common/` | 共用 | `Format.kt` 金额与日期格式化；`BillImport.kt` 文件/粘贴导入与结果弹窗；`BudgetDialog.kt` 预算设置。 |
+
+### 1.1 数据模型（Room v4）
+
+* `transactions` 新增 `note`（备注）、`images`（图片文件名，换行分隔）。
+* 新增 `categories` 表（`name`、`type`、`iconKey`、`colorArgb`、`sortOrder`、`isProtected`，`(type,name)` 唯一）。交易仍以分类**名称**关联，兼容自动记账与账单导入写入的名称。
+* `AppDatabase.MIGRATION_3_4` 无损升级保留历史账单；启动时 `ensureDefaultCategories()` 在分类表为空时写入默认分类（`data/category/DefaultCategories.kt`）。
+* 删除分类：该分类下账单归入「其他支出 / 其他收入」（这两个兜底分类不可删除）；重命名分类会同步更新历史账单。
+* 图片：`data/attachment/AttachmentStore.kt` 通过系统照片选择器（无需存储权限）导入，按 EXIF 旋转、长边压到 2048px、JPEG 85 存入 `filesDir/attachments/`。
+* 月度预算、上次使用的账户存于 `data/prefs/AppPrefs.kt`（SharedPreferences）。
 
 ### 2. 全格式账单导入解析引擎 (`CsvStatementImporter.kt`)
 
