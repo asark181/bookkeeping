@@ -41,6 +41,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :now WHERE id = :id")
     suspend fun markDeleted(id: Long, now: Long = System.currentTimeMillis())
 
+    @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun markDeletedIds(ids: List<Long>, now: Long = System.currentTimeMillis())
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotificationLog(log: com.bookkeeping.app.data.db.entity.CapturedNotification): Long
 

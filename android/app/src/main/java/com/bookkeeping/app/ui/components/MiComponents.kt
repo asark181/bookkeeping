@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -82,14 +83,24 @@ fun Modifier.miClickable(
         .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
 }
 
-/** 列表行按压：整行浅灰高亮 */
-fun Modifier.miRowClickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+/** 列表行按压：整行浅灰高亮，可选长按 */
+fun Modifier.miRowClickable(
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val bg by animateColorAsState(if (pressed) Mi.colors.pressed else Color.Transparent, label = "rowPress")
     this
         .background(bg)
-        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+        .combinedClickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            onLongClick = onLongClick,
+            onClick = onClick
+        )
 }
 
 // ───────────────────────── 按钮 ─────────────────────────

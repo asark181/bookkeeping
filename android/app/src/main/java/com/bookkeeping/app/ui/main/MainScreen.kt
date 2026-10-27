@@ -13,6 +13,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -96,6 +99,7 @@ fun MainScreen() {
     var currentTab by rememberSaveable { mutableStateOf(NavigationItem.DETAIL) }
     val stack = remember { mutableStateListOf<PageEntry>() }
     var openedRecord by remember { mutableStateOf<TransactionRecord?>(null) }
+    var selectionMode by remember { mutableStateOf(false) }
 
     fun push(page: Page) = stack.add(PageEntry(page))
     fun pop() {
@@ -113,7 +117,8 @@ fun MainScreen() {
                         onAdd = { push(Page.Editor(null)) },
                         onSearch = { push(Page.Search) },
                         onManageCategories = { push(Page.Categories) },
-                        onOpenRecord = openRecord
+                        onOpenRecord = openRecord,
+                        onSelectionModeChange = { selectionMode = it }
                     )
                     NavigationItem.CHART -> ChartScreen(onOpenRecord = openRecord)
                     NavigationItem.ASSET -> AssetScreen()
@@ -121,15 +126,29 @@ fun MainScreen() {
                 }
             }
 
-            BottomBar(
-                current = currentTab,
-                onSelect = { currentTab = it },
-                onAdd = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    push(Page.Editor(null))
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
+            // 状态栏遮罩：滚动内容不与时间、电量图标重叠
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(Mi.colors.background.copy(alpha = 0.96f))
             )
+
+            AnimatedVisibility(
+                visible = !selectionMode,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                BottomBar(
+                    current = currentTab,
+                    onSelect = { currentTab = it },
+                    onAdd = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        push(Page.Editor(null))
+                    }
+                )
+            }
 
             stack.forEach { entry ->
                 key(entry) {

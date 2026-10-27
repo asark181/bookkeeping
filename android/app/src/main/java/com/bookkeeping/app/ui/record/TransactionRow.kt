@@ -1,7 +1,9 @@
 package com.bookkeeping.app.ui.record
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
@@ -35,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -59,7 +63,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 
 /** 账单行：分类圆标 + 标题/备注 + 金额 */
 @Composable
-fun TransactionRow(record: TransactionRecord, onClick: () -> Unit, showDate: Boolean = false) {
+fun TransactionRow(
+    record: TransactionRecord,
+    onClick: () -> Unit,
+    showDate: Boolean = false,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
+) {
     val c = Mi.colors
     val v = categoryVisual(record.category, record.type)
     val isIncome = record.type == "INCOME"
@@ -69,10 +80,16 @@ fun TransactionRow(record: TransactionRecord, onClick: () -> Unit, showDate: Boo
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .miRowClickable(onClick = onClick)
+            .miRowClickable(onLongClick = onLongClick, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        AnimatedVisibility(visible = selectionMode) {
+            Row {
+                SelectMark(selected)
+                Spacer(Modifier.width(12.dp))
+            }
+        }
         Box(Modifier.size(40.dp).clip(CircleShape).background(v.color.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(v.icon, contentDescription = record.category, tint = v.color, modifier = Modifier.size(21.dp))
         }
@@ -120,6 +137,22 @@ fun TransactionRow(record: TransactionRecord, onClick: () -> Unit, showDate: Boo
             fontWeight = FontWeight.SemiBold,
             color = if (isIncome) c.income else c.textPrimary
         )
+    }
+}
+
+/** 多选圆形勾选标记 */
+@Composable
+fun SelectMark(selected: Boolean) {
+    val c = Mi.colors
+    Box(
+        modifier = Modifier
+            .size(22.dp)
+            .clip(CircleShape)
+            .background(if (selected) c.primary else Color.Transparent)
+            .border(1.6.dp, if (selected) c.primary else c.textTertiary, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) Icon(Icons.Default.Check, contentDescription = "已选", tint = Color.White, modifier = Modifier.size(15.dp))
     }
 }
 
