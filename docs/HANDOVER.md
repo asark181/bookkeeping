@@ -1,0 +1,235 @@
+# 智能记账 (Bookkeeping) 工程交接与运维手册
+
+本文档为「智能记账」工程的核心技术架构、模块实现、全渠道账单导入、部署运维及交接排错指南，供后续开发、测试与运维人员交接与维护使用。
+
+---
+
+## 一、 项目背景与产品定位
+
+* **产品定位**：专为 **小米 15 Pro (HyperOS 2 / Android 15)** 深度调优的高性能、高私密性自动记账工具。
+* **设计哲学**：
+  * **1:1 原生复刻「钱迹」极简纯粹体验**：去除所有花哨广告、社交属性与多余 AI 营销文案，界面采用 Material 3 原生矢量圆底徽章与金融级等宽数字对齐。
+  * **单人专属账本**：彻底废弃繁复的多账本与家庭分账逻辑，有且只有一本专属个人账本，开箱即用。
+  * **全生态通知秒级捕获**：除主流微信与支付宝外，全面打通美团外卖、京东白条、抖音商城等自闭环支付通知。
+  * **全格式官方账单秒级导入与去重**：支持微信/支付宝官方 CSV、**微信官方 XLSX 电子表格**、加密或未加密 ZIP 压缩包、系统剪贴板与应用间分享流转（Intent）。
+
+---
+
+## 二、 系统架构全景
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Android Client (Kotlin + Compose)              │
+├────────────────────────────────────────────────────────────────────────┤
+│  UI 层 (钱迹 1:1 4-Tab 架构)                                             │
+│  ├─ 明细 (DetailScreen)   : 顶部3列统计 + 胶囊操作 + 时间线流水 + 详情抽屉    │
+│  ├─ 图表 (ChartScreen)    : 周/月/年维度切换 + Canvas 原生环形图 + 消费排行榜 │
+│  ├─ 资产 (AssetScreen)    : 净资产卡片 + 微信/支付宝/银行账户收支汇总         │
+│  └─ 我的 (ProfileScreen)  : C端标准账号登录/注册 + 通知看门狗状态 + 账单导入 │
+├────────────────────────────────────────────────────────────────────────┤
+│  业务逻辑与数据解析层                                                  │
+│  ├─ NotificationListenerService : 捕获微信/支付宝/美团/京东/抖音系统通知  │
+│  ├─ ListenerWatchdog            : AlarmManager 链式看门狗防杀自愈       │
+│  ├─ DedupHelper                 : 毫秒级多渠道（微信/通知/银行卡）智能去重   │
+│  └─ CsvStatementImporter        : 深度支持 CSV / XLSX (OpenXML) / ZIP 导入│
+├────────────────────────────────────────────────────────────────────────┤
+│  本地存储层 (Room + SQLite WAL)                                        │
+│  └─ AppDatabase (TransactionRecord, CapturedNotification, UserProfile) │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ HTTPS (Bearer Token / PBKDF2)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Cloud Server (FastAPI + Python)                 │
+├────────────────────────────────────────────────────────────────────────┤
+│  运行环境 : Linux / Ubuntu 22.04 LTS (<YOUR_SERVER_IP>)                │
+│  监听端口 : 127.0.0.1:8095 (Systemd: bookkeeping.service)              │
+│  反向代理 : Nginx + Cloudflare SSL (https://leafy.fxxkopenai.com)      │
+│  数据存储 : SQLite WAL (/opt/nuanyue/server/bookkeeping.db)            │
+│  核心接口 :                                                           │
+│    ├─ POST /api/auth/register       : C端标准手机号/账号+密码注册       │
+│    ├─ POST /api/auth/login-password : 密码登录与 JWT Token 颁发        │
+│    └─ GET  /api/auth/me             : 用户信息与默认专属账本查询       │
+│  静态托管 : /opt/nuanyue/web/                                          │
+│    ├─ ledger.html                   : 落地维护与下载页                  │
+│    └─ download/bookkeeping.apk      : Android 客户端安装包             │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 三、 客户端核心模块详解
+
+### 1. 钱迹 1:1 四大主界面与组件
+
+| 模块路径 | 页面定位 | 核心交互与设计规范 |
+|---|---|---|
+| `ui/main/MainScreen.kt` | 底部导航容器 | 管理 `DETAIL`（明细）、`CHART`（图表）、`ASSET`（资产）、`PROFILE`（我的）四大 Tab 切换与底部 NavigationBar。 |
+| `ui/detail/DetailScreen.kt` | 核心明细流水 | 年月选择器（`2026年10月 ▾`）；本月支出、收入、结余三列金融看板；胶囊快捷操作（粘贴账单、选文件、记一笔）；按天分组时间线；纯矢量 Material 图标；点击条目弹出详情抽屉。 |
+| `ui/chart/ChartScreen.kt` | 原生统计分析 | 周期切换（周、月、年）；集成 `DonutChart.kt`（Jetpack Compose Canvas 硬件加速纯绘制，中心镂空显示支出总额）；分类排行榜平滑进度条与百分比。 |
+| `ui/asset/AssetScreen.kt` | 资产看板 | 净资产卡片；账户分组展示（现金/借记卡/信用卡/数字账户）；动态累计各支付渠道的当月收支。 |
+| `ui/profile/ProfileScreen.kt` | 个人中心 | 用户状态卡片；通知常驻服务开关；CSV/XLSX/ZIP 账单选取导入；标准 C 端 `AuthModalDialog` 登录/注册弹窗。 |
+
+### 2. 全格式账单导入解析引擎 (`CsvStatementImporter.kt`)
+
+支持以下全部文件格式与交互入口：
+1. **微信官方导出的 `.xlsx` 电子表格**：
+   * 原生内置轻量 OpenXML 规范流式解析器（无需引入庞大臃肿且容易触发 Android Dalvik 兼容问题的 Apache POI 库）。
+   * 自动解压 OpenXML 架构内的 `xl/sharedStrings.xml` 字符字典与 `xl/worksheets/sheet1.xml` 行单元格。
+   * 支持识别 Excel 1900 历元序列日期浮点数（如 `46322.63872685185`），毫秒级还原为 `yyyy-MM-dd HH:mm:ss`。
+   * 精确提取交易时间、交易类型、交易对方、金额、收支方向、支付方式、微信交易单号。
+2. **ZIP 格式压缩包**：
+   * 自动探测 ZIP 幻数 (`PK\x03\x04`)，无论内部包含 `.xlsx` 还是 `.csv` / `.txt`，均自动在内存中完成瞬时解压与级联解析。
+3. **微信/支付宝官方 CSV 文本**：
+   * 智能识别 UTF-8（带或不带 BOM）与 GBK/GB18030 编码，避免乱码。
+4. **剪贴板与应用间直接流转**：
+   * 微信中长按文件「用其他应用打开」直接通过 `MainActivity` 的 `ACTION_VIEW` / `ACTION_SEND` 接收流并入库。
+   * 复制账单文本至剪贴板后，点击「粘贴账单」瞬间批量解析入库。
+5. **智能 MD5 / 交易单号指纹去重**：
+   * 基于第三方交易单号（微信支付单号、支付宝交易号）建立防重哈希索引，已入库条目自动识别并合并更新，绝不产生重复流水。
+
+### 3. 多渠道闭环通知监听器 (`NotificationParser.kt`)
+
+* **微信支付**：`com.tencent.mm`（微信支付凭证、转账到账、微信红包通知）。
+* **支付宝**：`com.eg.android.AlipayGphone`（支付助手、交易提醒）。
+* **美团生态**：`com.sankuai.meituan`、`com.sankuai.meituan.takeoutnew`（外卖订单扣款、美团月付）。
+* **京东生态**：`com.jingdong.app.mall`、`com.jd.jrapp`（京东支付、京东白条）。
+* **抖音生态**：`com.ss.android.ugc.aweme`（抖音商城订单支付、直播间下单扣款）。
+
+---
+
+## 四、 服务端与生产环境配置
+
+### 1. 主机与环境信息
+
+* **云服务环境**：Linux 64位 (Ubuntu 22.04 LTS)
+* **公网 IP**：`<YOUR_SERVER_IP>`
+* **绑定域名**：`https://leafy.fxxkopenai.com`
+* **SSH 访问**：`ssh <YOUR_SERVER_HOST>`（配置位于 `~/.ssh/config`）
+* **运行端口**：`8095`（注：此前 8091 端口被其他已有服务占用，已全量切至 `8095`）
+
+### 2. Systemd 守护进程
+
+服务配置文件：`/etc/systemd/system/bookkeeping.service`
+```ini
+[Unit]
+Description=Bookkeeping FastAPI Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/nuanyue/server
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8095
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+常用运维命令：
+```bash
+# 查看服务状态
+ssh <YOUR_SERVER_HOST> "sudo systemctl status bookkeeping.service"
+
+# 重启后端服务
+ssh <YOUR_SERVER_HOST> "sudo systemctl restart bookkeeping.service"
+
+# 查看最新实时日志
+ssh <YOUR_SERVER_HOST> "sudo journalctl -u bookkeeping.service -f -n 50"
+```
+
+### 3. Nginx 反向代理与静态资源映射
+
+配置文件位置：`/etc/nginx/sites-available/default` 或 `/etc/nginx/conf.d/leafy.conf`
+* **API 代理**：
+  ```nginx
+  location /api/ {
+      proxy_pass http://127.0.0.1:8095;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  ```
+* **落地页与 APK 下载路径**：
+  * 维护与下载页：`/opt/nuanyue/web/ledger.html` -> `https://leafy.fxxkopenai.com/ledger.html`
+  * 安装包路径：`/opt/nuanyue/web/download/bookkeeping.apk` -> `https://leafy.fxxkopenai.com/download/bookkeeping.apk`
+
+---
+
+## 五、 编译构建与发布流程
+
+### 1. 本地快速验证与编译
+
+```bash
+# 1. 运行核心单元测试（含微信官方 XLSX 导入验证）
+cd android
+./gradlew testDebugUnitTest
+
+# 2. 编译调试 APK
+./gradlew assembleDebug
+
+# 3. 产物路径
+# android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### 2. 发布到线上环境
+
+```bash
+# 1. 拷贝产物至本地发布目录并查看 SHA-256
+cp android/app/build/outputs/apk/debug/app-debug.apk dist/bookkeeping-debug.apk
+shasum -a 256 dist/bookkeeping-debug.apk
+
+# 2. 同步网页至生产服务器
+scp server/web/download.html <YOUR_SERVER_HOST>:/tmp/ledger.html
+ssh <YOUR_SERVER_HOST> "sudo mv /tmp/ledger.html /opt/nuanyue/web/ledger.html && sudo chmod 644 /opt/nuanyue/web/ledger.html"
+
+# 3. 同步 APK 至生产服务器
+scp dist/bookkeeping-debug.apk <YOUR_SERVER_HOST>:/tmp/bookkeeping.apk
+ssh <YOUR_SERVER_HOST> "sudo mv /tmp/bookkeeping.apk /opt/nuanyue/web/download/bookkeeping.apk && sudo chmod 644 /opt/nuanyue/web/download/bookkeeping.apk"
+
+# 4. 远程健康校验
+curl -sI https://leafy.fxxkopenai.com/ledger.html
+curl -sI https://leafy.fxxkopenai.com/download/bookkeeping.apk
+```
+
+---
+
+## 六、 运维排错与常见问题 (Troubleshooting)
+
+### Q1: 小米手机 (HyperOS 2) 上通知监听服务被杀或偶尔无法自动记账？
+* **排查步骤**：
+  1. 打开系统「设置」 -> 「应用设置」 -> 「应用管理」 -> 「智能记账」：
+     * **自启动**：开启
+     * **省电策略**：改为「无限制」（非常关键，HyperOS 默认会冻结后台服务）
+     * **权限管理**：检查「通知类权限」与「后台弹出界面」均已允许。
+  2. 检查应用内部「我的」页面中的「通知监听看门狗」是否处于已激活（Active）状态。应用内置了基于 `AlarmManager` 的自愈链式看门狗，只要开启「无限制」省电策略，即可实现高可靠常驻。
+  3. 确认微信/支付宝对应群聊或商户消息已开启「接收通知」并允许弹出通知栏横幅。
+
+### Q2: 微信官方导出的账单文件导入显示失败？
+* **排查步骤**：
+  1. 微信导出账单有两种形式：
+     * **直接发送 Excel 表格 (.xlsx)**：新版应用已全量原生支持，直接在「明细」或「我的」中选取该 `.xlsx` 文件即可。
+     * **加密压缩包 (.zip)**：微信发送到邮箱的 ZIP 压缩包通常带有解压密码（通常为身份证后 6 位）。如果该 ZIP 带密码，系统会提示解压异常。解决办法：手机本地解压后，直接选取解压出的 `.xlsx` 或 `.csv` 导入；若为未加密的 ZIP 压缩包，本应用支持直接选取导入。
+  2. 检查文件是否已被其他软件占用损坏；可在电脑端用 Excel 或 WPS 打开确认其包含 `交易时间, 交易类型...` 完整表头。
+
+### Q3: 服务端 8095 端口连接拒绝？
+* **排查步骤**：
+  1. 登录服务器执行 `sudo systemctl status bookkeeping.service` 查看退出原因。
+  2. 检查是否有历史僵尸进程占用：`sudo lsof -i :8095`。
+  3. 若需修改端口，切勿使用 `8091`（该端口已被本地 `hearth-journal` 服务占用）。修改端口后同步检查 Nginx 的 `proxy_pass` 指向。
+
+---
+
+## 七、 交接核对清单 (Checklist)
+
+- [x] **架构重构**：钱迹 1:1 纯粹 4-Tab（明细、图表、资产、我的）与单人专属账本全面落地。
+- [x] **无多余 AI 营销文案**：全应用 UI 彻底清爽化，遵循 Material 3 与原生金融界面规范。
+- [x] **XLSX 导入修复**：完整支持微信官方 `.xlsx` 格式明细解析，单测验证通过（65 笔真实流水全量入库）。
+- [x] **ZIP 级联解压**：支持直接选取 `.zip` 压缩包（自动解析内部的 `.xlsx` 或 `.csv`）。
+- [x] **标准 C 端认证**：落地账号/密码快速注册与登录弹窗，告别脆弱的短信验证码依赖。
+- [x] **高标准网站**：暗色微质感 + 钛金属真机模型 + Bento 特性栅格落地页部署上线。
+- [x] **测试覆盖**：22 项单元测试全部 PASS，包含多渠道通知、CSV、XLSX、去重合并场景。
+- [x] **云端生产验证**：服务端生产进程及 HTTPS 下载地址验证为 `200 OK`。

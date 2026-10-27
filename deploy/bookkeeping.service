@@ -1,0 +1,21 @@
+[Unit]
+Description=Bookkeeping sync server
+After=network.target
+
+[Service]
+User=bookkeeping
+Group=bookkeeping
+WorkingDirectory=/opt/bookkeeping/app
+Environment=BOOKKEEPING_DATA=/var/lib/bookkeeping
+Environment=BOOKKEEPING_DIST=/opt/bookkeeping/web
+ExecStart=/opt/bookkeeping/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8095 --workers 1 --proxy-headers
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bookkeeping
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
