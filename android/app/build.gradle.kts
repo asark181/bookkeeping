@@ -14,8 +14,8 @@ android {
         applicationId = "com.bookkeeping.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.1.0"
+        versionCode = 7
+        versionName = "1.2.0"
 
         buildConfigField("String", "SERVER_URL", "\"https://leafy.fxxkopenai.com\"")
         buildConfigField("String", "SERVER_FALLBACK_URL", "\"https://leafy.fxxkopenai.com\"")
@@ -39,7 +39,11 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        freeCompilerArgs += listOf("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi"
+        )
     }
 
     buildFeatures {
@@ -73,6 +77,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     testImplementation("junit:junit:4.13.2")
 }

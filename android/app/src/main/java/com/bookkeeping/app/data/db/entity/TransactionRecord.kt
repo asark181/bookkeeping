@@ -39,5 +39,12 @@ data class TransactionRecord(
     /** 记录更新时间戳（用于增量合并同步） */
     val updatedAt: Long = System.currentTimeMillis(),
     /** 软删除墓碑标记 */
-    val isDeleted: Boolean = false
-)
+    val isDeleted: Boolean = false,
+    /** 用户手写备注 */
+    val note: String? = null,
+    /** 图片备注文件名列表（换行分隔，存放于 filesDir/attachments） */
+    val images: String? = null
+) {
+    val imageList: List<String>
+        get() = images?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+}

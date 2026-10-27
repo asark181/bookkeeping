@@ -1,42 +1,31 @@
 package com.bookkeeping.app.ui.profile
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bookkeeping.app.data.auth.AccountManager
 import com.bookkeeping.app.data.auth.UserProfile
+import com.bookkeeping.app.ui.components.MiButton
+import com.bookkeeping.app.ui.components.MiSegmented
+import com.bookkeeping.app.ui.components.MiSheet
+import com.bookkeeping.app.ui.components.MiTextField
+import com.bookkeeping.app.ui.theme.Mi
 import kotlinx.coroutines.launch
 
 @Composable
@@ -53,150 +42,77 @@ fun AuthModalDialog(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(3.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (!isRegisterMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                        .clickable {
-                            isRegisterMode = false
-                            errorMsg = null
-                        }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "账号登录",
-                        fontWeight = if (!isRegisterMode) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 13.sp,
-                        color = if (!isRegisterMode) MaterialTheme.colorScheme.onSurface else Color.Gray
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isRegisterMode) MaterialTheme.colorScheme.surface else Color.Transparent)
-                        .clickable {
-                            isRegisterMode = true
-                            errorMsg = null
-                        }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "注册新账号",
-                        fontWeight = if (isRegisterMode) FontWeight.Bold else FontWeight.Normal,
-                        fontSize = 13.sp,
-                        color = if (isRegisterMode) MaterialTheme.colorScheme.onSurface else Color.Gray
-                    )
-                }
+    MiSheet(onDismissRequest = onDismiss, title = if (isRegisterMode) "注册账号" else "登录") { dismiss ->
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            MiSegmented(
+                options = listOf("账号登录", "注册新账号"),
+                selectedIndex = if (isRegisterMode) 1 else 0,
+                onSelect = { isRegisterMode = it == 1; errorMsg = null },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                if (isRegisterMode) "注册个人账号，用于多设备加密备份。" else "登录后自动同步云端密文备份。",
+                fontSize = 13.sp,
+                color = Mi.colors.textSecondary
+            )
+            Spacer(Modifier.height(16.dp))
+            MiTextField(
+                value = username,
+                onValueChange = { username = it },
+                placeholder = "用户名 / 手机号",
+                leadingIcon = Icons.Default.Person,
+                imeAction = ImeAction.Next
+            )
+            Spacer(Modifier.height(10.dp))
+            MiTextField(
+                value = password,
+                onValueChange = { password = it },
+                placeholder = "密码（至少 6 位）",
+                leadingIcon = Icons.Default.Lock,
+                password = true
+            )
+            if (isRegisterMode) {
+                Spacer(Modifier.height(10.dp))
+                MiTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    placeholder = "再次输入密码",
+                    leadingIcon = Icons.Default.Lock,
+                    password = true
+                )
             }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = if (isRegisterMode) "注册专属个人账号，账目本地端到端加密，支持多端安全同步。" else "登录你的个人账号，自动同步云端密文备份。",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("用户名 / 手机号") },
-                    placeholder = { Text("至少3位字符") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("密码") },
-                    placeholder = { Text("至少6位密码") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (isRegisterMode) {
-                    OutlinedTextField(
-                        value = confirmPassword,
-                        onValueChange = { confirmPassword = it },
-                        label = { Text("确认密码") },
-                        placeholder = { Text("请再次输入密码") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                errorMsg?.let {
-                    Text(text = it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                }
+            errorMsg?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(it, color = Mi.colors.danger, fontSize = 13.sp)
             }
-        },
-        confirmButton = {
-            Button(
+            Spacer(Modifier.height(20.dp))
+            MiButton(
+                text = if (isRegisterMode) "注册并登录" else "登录",
+                loading = isLoading,
+                enabled = username.isNotBlank() && password.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val u = username.trim()
                     val p = password.trim()
-                    if (u.length < 3) {
-                        errorMsg = "用户名至少需要3个字符"
-                        return@Button
+                    errorMsg = when {
+                        u.length < 3 -> "用户名至少需要 3 个字符"
+                        p.length < 6 -> "密码至少需要 6 位"
+                        isRegisterMode && p != confirmPassword.trim() -> "两次输入的密码不一致"
+                        else -> null
                     }
-                    if (p.length < 6) {
-                        errorMsg = "密码至少需要6位"
-                        return@Button
-                    }
-                    if (isRegisterMode && p != confirmPassword.trim()) {
-                        errorMsg = "两次输入的密码不一致"
-                        return@Button
-                    }
-
+                    if (errorMsg != null) return@MiButton
                     isLoading = true
-                    errorMsg = null
                     coroutineScope.launch {
-                        val result = if (isRegisterMode) {
-                            accountManager.register(u, p)
-                        } else {
-                            accountManager.loginWithPassword(u, p)
-                        }
+                        val result = if (isRegisterMode) accountManager.register(u, p) else accountManager.loginWithPassword(u, p)
                         isLoading = false
-                        result.onSuccess { profile ->
-                            onAuthSuccess(profile)
-                        }.onFailure {
-                            errorMsg = it.message ?: "操作失败，请重试"
-                        }
+                        result
+                            .onSuccess { profile -> dismiss { onAuthSuccess(profile) } }
+                            .onFailure { errorMsg = it.message ?: "操作失败，请重试" }
                     }
-                },
-                enabled = !isLoading && username.isNotBlank() && password.isNotBlank()
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(if (isRegisterMode) "立即注册并登录" else "登录")
                 }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
+            )
+            Spacer(Modifier.height(20.dp))
         }
-    )
+    }
 }
