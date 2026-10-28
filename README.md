@@ -91,7 +91,7 @@ cd android
 | 版本信息 JSON（versionCode / versionName / size / sha256 / apkUrl / notes） | `/opt/nuanyue/web/bookkeeping-version.json`（下载页与 App 内更新都读取它） |
 | `server/app.py` | `/opt/bookkeeping/app/app.py`（`sudo systemctl restart bookkeeping`） |
 
-覆盖前先把旧 APK 与 ledger.html 备份到 `~/backup/bookkeeping-<时间戳>/`。服务器地址与 SSH 凭据从私有密钥库获取，**不要写进仓库**。
+nginx 只把 `/api/auth/`、`/api/user/`、`/api/sync` 转发给记账服务（8095），新增接口需同步改 nginx。覆盖前先把旧 APK 与 ledger.html 备份到 `~/backup/bookkeeping-<时间戳>/`。服务器地址与 SSH 凭据从私有密钥库获取，**不要写进仓库**。
 
 ---
 

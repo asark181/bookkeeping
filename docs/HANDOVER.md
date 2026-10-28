@@ -206,6 +206,7 @@ ssh <YOUR_SERVER_HOST> "sudo journalctl -u bookkeeping.service -f -n 50"
 * **并发**：`PUT /api/sync` 必须带 `base_version`，与服务器当前版本不一致返回 409，客户端重新拉取合并后重试（最多 3 次）。
 * **触发**（`SyncManager`）：启动时；回到前台且距上次超过 5 分钟；Room `InvalidationTracker` 监听 transactions/categories 变化后 30 秒（WorkManager 唯一任务，连续修改顺延）；WorkManager 每 6 小时；「我的 → 立即同步」；登录后立即同步。
 * **会话**：服务端 `sessions(token_hash, user_id, created_at, last_used_at)` 每台设备一条，单账号最多保留最近使用的 10 个，登录新设备不会挤掉其他设备。`users.token_hash` 为旧字段，启动时迁入 `sessions` 后置空。
+* **线上 nginx**：`/etc/nginx/sites-available/nuanyue` 中 `/api/auth/`、`/api/user/` 和 `location = /api/sync`（`client_max_body_size 10m`）转发到 8095，其余 `/api/` 属于同机的暖月（8090）。新增记账接口时必须同步加转发，否则会落到暖月返回 404。
 * **验证方法**：本机起服务端（`BOOKKEEPING_DATA=<临时目录> uvicorn app:app --port 8095`），测试包临时把 `SERVER_URL` 改为 `http://localhost:8095` 并开启 cleartext、`adb reverse tcp:8095 tcp:8095`；用 Python（`cryptography` 的 AESGCM + `hashlib.pbkdf2_hmac`）模拟第二台设备解密/修改/上传。测试完必须还原构建文件。
 
 ## 五、 编译构建与发布流程
