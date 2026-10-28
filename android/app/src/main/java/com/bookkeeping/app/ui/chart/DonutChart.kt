@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -126,6 +128,7 @@ fun BarChart(
         progress.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
     }
     val max = (points.maxOfOrNull { it.valueCents } ?: 0L).coerceAtLeast(1L)
+    val currentSelected by rememberUpdatedState(selectedIndex)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Canvas(
@@ -137,7 +140,7 @@ fun BarChart(
                         if (points.isEmpty()) return@detectTapGestures
                         val slot = size.width / points.size.toFloat()
                         val idx = (offset.x / slot).toInt().coerceIn(0, points.lastIndex)
-                        onSelect(if (idx == selectedIndex) null else idx)
+                        onSelect(if (idx == currentSelected) null else idx)
                     }
                 }
         ) {

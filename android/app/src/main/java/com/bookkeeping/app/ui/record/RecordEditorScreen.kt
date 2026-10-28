@@ -163,60 +163,74 @@ fun RecordEditorScreen(
     val evaluated = remember(expression) { Calculator.evaluate(expression) }
     val hasOperator = remember(expression) { Calculator.hasPendingOperator(expression) }
 
+    var saving by remember { mutableStateOf(false) }
+
     fun save(again: Boolean) {
+        if (saving) return
         val cents = evaluated ?: 0L
         if (cents <= 0L) {
             Toast.makeText(context, "请输入金额", Toast.LENGTH_SHORT).show()
             return
         }
         val categoryName = selectedName ?: categories.firstOrNull()?.name ?: "未分类"
+        saving = true
         scope.launch {
-            val dao = db.transactionDao()
-            val now = System.currentTimeMillis()
-            if (editing != null) {
-                dao.update(
-                    editing.copy(
-                        amountCents = cents,
-                        type = type,
-                        category = categoryName,
-                        channel = channel,
-                        merchant = merchant.trim().ifBlank { null },
-                        note = note.trim().ifBlank { null },
-                        images = images.joinToString("\n").ifBlank { null },
-                        timestamp = timestamp,
-                        updatedAt = now
+            try {
+                val dao = db.transactionDao()
+                val now = System.currentTimeMillis()
+                if (editing != null) {
+                    // 以库中最新版本为基础，避免覆盖编辑期间被删除、或被导入补全的字段
+                    val latest = dao.getById(editing.id)
+                    if (latest == null || latest.isDeleted) {
+                        Toast.makeText(context, "这笔账单已被删除，无法保存", Toast.LENGTH_SHORT).show()
+                        close()
+                        return@launch
+                    }
+                    dao.update(
+                        latest.copy(
+                            amountCents = cents,
+                            type = type,
+                            category = categoryName,
+                            channel = channel,
+                            merchant = merchant.trim().ifBlank { null },
+                            note = note.trim().ifBlank { null },
+                            images = images.joinToString("\n").ifBlank { null },
+                            timestamp = timestamp,
+                            updatedAt = now
+                        )
                     )
-                )
-                AttachmentStore.delete(context, removedImages)
-            } else {
-                dao.insert(
-                    TransactionRecord(
-                        amountCents = cents,
-                        type = type,
-                        channel = channel,
-                        merchant = merchant.trim().ifBlank { null },
-                        category = categoryName,
-                        timestamp = timestamp,
-                        note = note.trim().ifBlank { null },
-                        images = images.joinToString("\n").ifBlank { null },
-                        updatedAt = now
+                } else {
+                    dao.insert(
+                        TransactionRecord(
+                            amountCents = cents,
+                            type = type,
+                            channel = channel,
+                            merchant = merchant.trim().ifBlank { null },
+                            category = categoryName,
+                            timestamp = timestamp,
+                            note = note.trim().ifBlank { null },
+                            images = images.joinToString("\n").ifBlank { null },
+                            updatedAt = now
+                        )
                     )
-                )
+                }
                 AttachmentStore.delete(context, removedImages)
-            }
-            prefs.lastChannel = channel
-            freshImages.clear()
-            removedImages.clear()
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            if (again && editing == null) {
-                savedCount++
-                expression = ""
-                note = ""
-                merchant = ""
-                images.clear()
-                Toast.makeText(context, "已记一笔，继续记录", Toast.LENGTH_SHORT).show()
-            } else {
-                onClose()
+                prefs.lastChannel = channel
+                freshImages.clear()
+                removedImages.clear()
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (again && editing == null) {
+                    savedCount++
+                    expression = ""
+                    note = ""
+                    merchant = ""
+                    images.clear()
+                    Toast.makeText(context, "已记一笔，继续记录", Toast.LENGTH_SHORT).show()
+                } else {
+                    onClose()
+                }
+            } finally {
+                saving = false
             }
         }
     }

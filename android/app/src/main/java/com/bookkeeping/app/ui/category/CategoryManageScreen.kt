@@ -143,9 +143,10 @@ fun CategoryManageScreen(onBack: () -> Unit, initialType: String = "EXPENSE") {
             type = editorTarget?.type ?: type,
             onDismiss = { creating = false; editorTarget = null },
             onSave = { draft ->
+                // 弹层关闭后 editorTarget 会被置空，必须在协程启动前捕获
+                val old = editorTarget
                 scope.launch {
                     try {
-                        val old = editorTarget
                         if (old != null) {
                             dao.updateWithRename(old, draft)
                         } else {

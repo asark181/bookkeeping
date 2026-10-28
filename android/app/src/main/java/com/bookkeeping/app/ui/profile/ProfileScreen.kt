@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AccessibilityNew
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -53,7 +55,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.bookkeeping.app.BookkeepingApp
 import com.bookkeeping.app.BuildConfig
+import com.bookkeeping.app.update.ManualCheck
 import com.bookkeeping.app.data.auth.AccountManager
 import com.bookkeeping.app.data.db.AppDatabase
 import com.bookkeeping.app.data.prefs.AppPrefs
@@ -91,6 +95,9 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
     val dao = remember { AppDatabase.getInstance(context).transactionDao() }
     val all by dao.getAllFlow().collectAsState(initial = emptyList())
     val importer = rememberBillImporter()
+    val updates = remember { (context.applicationContext as BookkeepingApp).updates }
+    val updateUi by updates.ui.collectAsState()
+    val manual by updates.manual.collectAsState()
 
     var profile by remember { mutableStateOf(accountManager.getProfile()) }
     var listenerOn by remember { mutableStateOf(ListenerWatchdog.isNotificationListenerEnabled(context)) }
@@ -154,7 +161,7 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
                         Text(profile?.username ?: "登录 / 注册", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            if (profile != null) "个人账本 · 端侧加密备份" else "登录后可多设备加密备份",
+                            if (profile != null) "个人账本 · 已登录" else "账单始终保存在本机，登录后可使用账号",
                             fontSize = 13.sp,
                             color = c.textSecondary
                         )
@@ -263,6 +270,35 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
                     icon = Icons.Default.Shield,
                     iconColor = Color(0xFF0284C7),
                     onClick = { showPrivacy = true }
+                )
+                MiDivider(startIndent = 66.dp)
+                MiListItem(
+                    title = "检查更新",
+                    summary = when {
+                        updateUi != null -> "发现新版本 ${updateUi!!.offer.versionName}，点击应用内更新"
+                        manual is ManualCheck.Failed -> "检查失败：${(manual as ManualCheck.Failed).reason}，点击重试"
+                        else -> null
+                    },
+                    value = when {
+                        updateUi != null -> null
+                        manual == ManualCheck.Checking -> "检查中…"
+                        manual == ManualCheck.UpToDate -> "已是最新"
+                        else -> "v${BuildConfig.VERSION_NAME}"
+                    },
+                    icon = Icons.Default.SystemUpdate,
+                    iconColor = Color(0xFF16B47A),
+                    trailing = if (updateUi != null) {
+                        {
+                            Text(
+                                "NEW",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Mi.colors.danger).padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    } else null,
+                    onClick = { updates.checkFromUser() }
                 )
                 MiDivider(startIndent = 66.dp)
                 MiListItem(

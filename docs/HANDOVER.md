@@ -44,10 +44,10 @@
 │  运行环境 : Linux / Ubuntu 22.04 LTS (<YOUR_SERVER_IP>)                │
 │  监听端口 : 127.0.0.1:8095 (Systemd: bookkeeping.service)              │
 │  反向代理 : Nginx + Cloudflare SSL (https://leafy.fxxkopenai.com)      │
-│  数据存储 : SQLite WAL (/opt/nuanyue/server/bookkeeping.db)            │
+│  数据存储 : SQLite WAL (/var/lib/bookkeeping/bookkeeping.db)           │
 │  核心接口 :                                                           │
-│    ├─ POST /api/auth/register       : C端标准手机号/账号+密码注册       │
-│    ├─ POST /api/auth/login-password : 密码登录与 JWT Token 颁发        │
+│    ├─ POST /api/auth/register       : 用户名/手机号 + 密码注册          │
+│    ├─ POST /api/auth/login-password : 密码登录，颁发随机令牌（存哈希）  │
 │    └─ GET  /api/auth/me             : 用户信息与默认专属账本查询       │
 │  静态托管 : /opt/nuanyue/web/                                          │
 │    ├─ ledger.html                   : 落地维护与下载页                  │
@@ -182,6 +182,21 @@ ssh <YOUR_SERVER_HOST> "sudo journalctl -u bookkeeping.service -f -n 50"
   * 安装包路径：`/opt/nuanyue/web/download/bookkeeping.apk` -> `https://leafy.fxxkopenai.com/download/bookkeeping.apk`
 
 ---
+
+## 四-补充、 服务端账号表与错误约定（v1.4.0）
+
+* `users` 表：`id`、`username`（`UNIQUE COLLATE NOCASE`，大小写不敏感）、`password_hash`/`password_salt`（PBKDF2-SHA256 10 万轮）、`token_hash`（登录令牌的 sha256，明文令牌只返回给客户端一次）、`created_at`、`last_login_at`。
+* 旧表来自早期手机号验证码登录（`phone UNIQUE NOT NULL`、明文 `token`），曾导致「用手机号注册」触发唯一约束 500。`server/app.py::_migrate_users` 在服务启动时自动重建：先用 SQLite 备份 API 备份到 `/var/lib/bookkeeping/backups/bookkeeping-before-users-migration-<时间戳>.db`，无用户名的旧账号以手机号作为用户名（无密码，注册同名即设置密码），旧令牌转为哈希。
+* 验证码登录接口（含万能码 888888）与 `otp_codes` 表已删除；多账本接口已删除（单账本设计）。
+* 所有错误统一返回 JSON：`{"status": "error", "detail": "<中文提示>"}`，参数校验错误为 400，未知异常为 500（日志里有完整堆栈）。
+* 测试：`python -m pytest server/tests`（需要 `fastapi==0.115.6`、`httpx`、`pytest`），覆盖旧表迁移、手机号注册、大小写去重与错误格式。
+
+## 四-补充、 应用内更新（v1.4.0，参考 Period/暖月）
+
+* 代码：`update/AppUpdate.kt`（状态机：Available → Downloading → Ready / NeedsPermission / Failed）、`ApkFetcher.kt`（断点续传）、`UpdateLogic.kt`（版本解析与 sha256/APK 头校验），界面 `ui/profile/UpdateSheet.kt`。
+* 版本来源：`https://leafy.fxxkopenai.com/bookkeeping-version.json`（`versionCode`、`versionName`、`apkUrl`、`sha256`、`notes`）。**发布新版必须同步更新这个文件**，否则客户端看不到新版本；sha256 必须与 APK 一致，否则客户端会拒绝安装。
+* 触发：启动时距上次检查超过 6 小时静默检查；WorkManager 每 12 小时检查并对每个新版本发一次通知；「我的 → 检查更新」手动检查并弹出更新面板；有新版本时底栏「我的」亮红点。
+* 安装：APK 下载到 `filesDir/updates/`，经 `FileProvider`（`${applicationId}.fileprovider`）交给系统安装器；缺少「安装未知应用」权限时跳转授权，`MainActivity.onResume` 回来后自动继续安装。签名必须与已安装版本一致（当前为本机 debug 签名）。
 
 ## 五、 编译构建与发布流程
 

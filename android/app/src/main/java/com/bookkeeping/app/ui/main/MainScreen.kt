@@ -63,12 +63,17 @@ import com.bookkeeping.app.ui.category.CategoryManageScreen
 import com.bookkeeping.app.ui.category.LocalCategoryMap
 import com.bookkeeping.app.ui.category.categoryKey
 import com.bookkeeping.app.ui.chart.ChartScreen
+import com.bookkeeping.app.ui.common.SharedImport
+import com.bookkeeping.app.ui.common.SharedImportPrompt
+import com.bookkeeping.app.ui.common.rememberBillImporter
 import com.bookkeeping.app.ui.components.LocalOverlayHost
 import com.bookkeeping.app.ui.components.OverlayHost
 import com.bookkeeping.app.ui.components.OverlayHostView
 import com.bookkeeping.app.ui.components.miClickable
 import com.bookkeeping.app.ui.detail.DetailScreen
 import com.bookkeeping.app.ui.profile.ProfileScreen
+import com.bookkeeping.app.ui.profile.UpdateSheet
+import com.bookkeeping.app.BookkeepingApp
 import com.bookkeeping.app.ui.record.RecordEditorScreen
 import com.bookkeeping.app.ui.record.SearchScreen
 import com.bookkeeping.app.ui.record.TransactionDetailSheet
@@ -88,7 +93,7 @@ private class PageEntry(val page: Page) {
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(sharedImport: SharedImport? = null, onSharedImportHandled: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -100,6 +105,8 @@ fun MainScreen() {
     val stack = remember { mutableStateListOf<PageEntry>() }
     var openedRecord by remember { mutableStateOf<TransactionRecord?>(null) }
     var selectionMode by remember { mutableStateOf(false) }
+    val updates = remember { (context.applicationContext as BookkeepingApp).updates }
+    val updateUi by updates.ui.collectAsState()
 
     fun push(page: Page) = stack.add(PageEntry(page))
     fun pop() {
@@ -142,6 +149,7 @@ fun MainScreen() {
             ) {
                 BottomBar(
                     current = currentTab,
+                    profileBadge = updateUi != null,
                     onSelect = { currentTab = it },
                     onAdd = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -197,6 +205,11 @@ fun MainScreen() {
             )
         }
 
+        updateUi?.takeIf { it.sheet }?.let { UpdateSheet(it, updates) }
+
+        val shareImporter = rememberBillImporter()
+        sharedImport?.let { SharedImportPrompt(it, shareImporter, onSharedImportHandled) }
+
         OverlayHostView(overlayHost)
     }
 }
@@ -205,6 +218,7 @@ fun MainScreen() {
 @Composable
 private fun BottomBar(
     current: NavigationItem,
+    profileBadge: Boolean,
     onSelect: (NavigationItem) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier
@@ -228,7 +242,9 @@ private fun BottomBar(
             ) {
                 items.take(2).forEach { TabItem(it, it == current, Modifier.weight(1f)) { onSelect(it) } }
                 Spacer(Modifier.weight(1f))
-                items.drop(2).forEach { TabItem(it, it == current, Modifier.weight(1f)) { onSelect(it) } }
+                items.drop(2).forEach {
+                    TabItem(it, it == current, Modifier.weight(1f), badge = profileBadge && it == NavigationItem.PROFILE) { onSelect(it) }
+                }
             }
         }
         Box(
@@ -248,18 +264,23 @@ private fun BottomBar(
 }
 
 @Composable
-private fun TabItem(item: NavigationItem, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun TabItem(item: NavigationItem, selected: Boolean, modifier: Modifier, badge: Boolean = false, onClick: () -> Unit) {
     val c = Mi.colors
     Column(
         modifier = modifier.miClickable(pressedScale = 0.9f, onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            if (selected) item.selectedIcon else item.icon,
-            contentDescription = item.label,
-            tint = if (selected) c.primary else c.textSecondary,
-            modifier = Modifier.size(25.dp)
-        )
+        Box {
+            Icon(
+                if (selected) item.selectedIcon else item.icon,
+                contentDescription = item.label,
+                tint = if (selected) c.primary else c.textSecondary,
+                modifier = Modifier.size(25.dp)
+            )
+            if (badge) {
+                Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-1).dp).size(8.dp).clip(CircleShape).background(c.danger))
+            }
+        }
         Spacer(Modifier.height(2.dp))
         Text(
             item.label,

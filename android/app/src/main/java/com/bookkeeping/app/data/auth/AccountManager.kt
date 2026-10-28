@@ -5,8 +5,10 @@ import android.content.SharedPreferences
 import com.bookkeeping.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -55,75 +57,78 @@ class AccountManager(context: Context) {
         prefs.edit().clear().apply()
     }
 
-    suspend fun register(username: String, password: String): Result<UserProfile> = withContext(Dispatchers.IO) {
-        try {
-            val serverUrl = "${BuildConfig.SERVER_URL}/api/auth/register"
-            val json = JSONObject().apply {
-                put("username", username)
-                put("password", password)
-            }
-            val responseStr = postJson(serverUrl, json.toString())
-            val resObj = JSONObject(responseStr)
-            if (resObj.optString("status") == "ok") {
-                val token = resObj.getString("token")
-                val userObj = resObj.getJSONObject("user")
-                val uid = userObj.getLong("id")
-                val ledgerObj = resObj.getJSONObject("ledger")
-                val ledgerName = ledgerObj.optString("name", "个人账本")
-                val ledgerSpace = ledgerObj.optString("space", "")
+    suspend fun register(username: String, password: String): Result<UserProfile> =
+        authenticate("/api/auth/register", username, password, "注册失败")
 
-                saveLogin(uid, username, token, ledgerName, ledgerSpace)
-                Result.success(UserProfile(uid, username, token, ledgerName, ledgerSpace))
-            } else {
-                Result.failure(Exception(resObj.optString("detail", "注册失败")))
+    suspend fun loginWithPassword(username: String, password: String): Result<UserProfile> =
+        authenticate("/api/auth/login-password", username, password, "登录失败")
+
+    private suspend fun authenticate(path: String, username: String, password: String, fallback: String): Result<UserProfile> =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().put("username", username).put("password", password).toString()
+            val response = try {
+                postJson("${BuildConfig.SERVER_URL}$path", body)
+            } catch (e: IOException) {
+                return@withContext Result.failure(Exception("网络连接失败，请检查网络后重试"))
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+            val json = response.json
+            if (response.status in 200..299 && json?.optString("status") == "ok") {
+                runCatching {
+                    val user = json.getJSONObject("user")
+                    val ledger = json.optJSONObject("ledger")
+                    val profile = UserProfile(
+                        id = user.getLong("id"),
+                        username = user.optString("username", username),
+                        token = json.getString("token"),
+                        ledgerName = ledger?.optString("name", "个人账本") ?: "个人账本",
+                        ledgerSpace = ledger?.optString("space", "") ?: ""
+                    )
+                    saveLogin(profile.id, profile.username, profile.token, profile.ledgerName, profile.ledgerSpace)
+                    profile
+                }.recoverCatching { throw Exception("$fallback：服务器响应格式异常") }
+            } else {
+                Result.failure(Exception(errorMessage(response, fallback)))
+            }
+        }
+
+    private class HttpResponse(val status: Int, val body: String) {
+        /** 非 JSON 响应（如网关 502 页面、纯文本 500）返回 null */
+        val json: JSONObject? = runCatching { JSONObject(body) }.getOrNull()
+    }
+
+    /** 服务端统一返回 {"detail": "中文提示"}；兼容 FastAPI 参数校验的列表格式与非 JSON 响应 */
+    private fun errorMessage(response: HttpResponse, fallback: String): String {
+        val detail = response.json?.opt("detail")
+        val text = when (detail) {
+            is String -> detail
+            is JSONArray -> (0 until detail.length()).mapNotNull { detail.optJSONObject(it)?.optString("msg") }.firstOrNull()
+            else -> null
+        }
+        return when {
+            !text.isNullOrBlank() -> text
+            response.status == 429 -> "操作太频繁，请稍后再试"
+            response.status >= 500 -> "服务器开小差了（HTTP ${response.status}），请稍后重试"
+            else -> "$fallback（HTTP ${response.status}）"
         }
     }
 
-    suspend fun loginWithPassword(username: String, password: String): Result<UserProfile> = withContext(Dispatchers.IO) {
-        try {
-            val serverUrl = "${BuildConfig.SERVER_URL}/api/auth/login-password"
-            val json = JSONObject().apply {
-                put("username", username)
-                put("password", password)
-            }
-            val responseStr = postJson(serverUrl, json.toString())
-            val resObj = JSONObject(responseStr)
-            if (resObj.optString("status") == "ok") {
-                val token = resObj.getString("token")
-                val userObj = resObj.getJSONObject("user")
-                val uid = userObj.getLong("id")
-                val ledgerObj = resObj.getJSONObject("ledger")
-                val ledgerName = ledgerObj.optString("name", "个人账本")
-                val ledgerSpace = ledgerObj.optString("space", "")
-
-                saveLogin(uid, username, token, ledgerName, ledgerSpace)
-                Result.success(UserProfile(uid, username, token, ledgerName, ledgerSpace))
-            } else {
-                Result.failure(Exception(resObj.optString("detail", "登录失败")))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    private fun postJson(urlStr: String, jsonBody: String): String {
-        val url = URL(urlStr)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
+    private fun postJson(urlStr: String, jsonBody: String): HttpResponse {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 8000
-            readTimeout = 8000
-            doInput = true
+            connectTimeout = 10_000
+            readTimeout = 15_000
             doOutput = true
-            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            setRequestProperty("Accept", "application/json")
         }
-
-        OutputStreamWriter(conn.outputStream, "UTF-8").use { it.write(jsonBody) }
-
-        val status = conn.responseCode
-        val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-        return BufferedReader(InputStreamReader(stream, "UTF-8")).use { it.readText() }
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(jsonBody) }
+            val status = conn.responseCode
+            val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.let { BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() } }.orEmpty()
+            return HttpResponse(status, text)
+        } finally {
+            conn.disconnect()
+        }
     }
 }

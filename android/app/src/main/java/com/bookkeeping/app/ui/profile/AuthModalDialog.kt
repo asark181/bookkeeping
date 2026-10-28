@@ -52,7 +52,7 @@ fun AuthModalDialog(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                if (isRegisterMode) "注册个人账号，用于多设备加密备份。" else "登录后自动同步云端密文备份。",
+                if (isRegisterMode) "注册个人账号。账单始终保存在本机，不会上传。" else "登录你的个人账号。账单始终保存在本机。",
                 fontSize = 13.sp,
                 color = Mi.colors.textSecondary
             )

@@ -121,8 +121,10 @@ fun MiModal(
         }
     }
     val dismiss: Dismiss = { after ->
-        pendingAfter = after
-        visible.targetState = false
+        if (visible.targetState) {
+            pendingAfter = after
+            visible.targetState = false
+        }
     }
 
     val host = LocalOverlayHost.current

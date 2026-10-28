@@ -335,7 +335,11 @@ fun DetailScreen(
     }
 
     if (showMonthPicker) {
-        MiMonthPickerSheet(year, month, onDismiss = { showMonthPicker = false }) { y, m -> year = y; month = m }
+        MiMonthPickerSheet(year, month, onDismiss = { showMonthPicker = false }) { y, m ->
+            // 限制在日历可翻页范围内（回看 10 年、前看 1 年），保持列表与日历月份一致
+            val (cy, cm) = pageMonth(monthPage(y, m, nowYear, nowMonth), nowYear, nowMonth)
+            year = cy; month = cm
+        }
     }
     if (showBudget) {
         BudgetDialog(onDismiss = { showBudget = false }, onSaved = { budgetCents = it })

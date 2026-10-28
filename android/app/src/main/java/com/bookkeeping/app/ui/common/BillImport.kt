@@ -2,6 +2,7 @@ package com.bookkeeping.app.ui.common
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +27,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bookkeeping.app.BookkeepingApp
 import com.bookkeeping.app.data.db.AppDatabase
 import com.bookkeeping.app.parser.CsvStatementImporter
 import com.bookkeeping.app.parser.ImportSummary
@@ -36,56 +37,66 @@ import com.bookkeeping.app.ui.components.MiDialog
 import com.bookkeeping.app.ui.components.MiSheet
 import com.bookkeeping.app.ui.components.MiTextField
 import com.bookkeeping.app.ui.theme.Mi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** 账单导入入口（选文件 / 粘贴文本）与结果弹窗，明细页与我的页共用 */
+/** 外部应用分享进来的账单（文件或文本），用户确认后才导入 */
+data class SharedImport(val uri: Uri?, val text: String?)
+
+/** 账单导入入口（选文件 / 粘贴文本 / 分享导入）与结果弹窗 */
 class BillImporter internal constructor(
     val pickFile: () -> Unit,
-    val openPaste: () -> Unit
+    val openPaste: () -> Unit,
+    val importUri: (Uri) -> Unit,
+    val importText: (String) -> Unit
 )
 
 @Composable
 fun rememberBillImporter(): BillImporter {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val dao = remember { AppDatabase.getInstance(context).transactionDao() }
+    // 应用级作用域：切换 Tab 导致页面离开组合时，导入不会被中途取消
+    val scope = remember { (context.applicationContext as BookkeepingApp).mainScope }
+    val db = remember { AppDatabase.getInstance(context) }
     var summary by remember { mutableStateOf<ImportSummary?>(null) }
     var showPaste by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            importing = true
-            scope.launch {
-                summary = try {
-                    context.contentResolver.openInputStream(uri)?.use { CsvStatementImporter.importFromStream(it, dao) }
-                        ?: ImportSummary(errorMessage = "无法读取文件")
-                } catch (e: Exception) {
-                    ImportSummary(errorMessage = "导入出错：${e.message}")
-                } finally {
-                    importing = false
-                }
+    fun runImport(block: suspend () -> ImportSummary, onDone: () -> Unit = {}) {
+        if (importing) return
+        importing = true
+        scope.launch {
+            summary = try {
+                block()
+            } catch (e: Exception) {
+                ImportSummary(errorMessage = "导入出错：${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                importing = false
             }
+            onDone()
         }
+    }
+
+    val importUri: (Uri) -> Unit = { uri ->
+        runImport({
+            withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { CsvStatementImporter.importFromStream(it, db.transactionDao(), db) }
+            } ?: ImportSummary(errorMessage = "无法读取文件")
+        })
+    }
+    val importText: (String) -> Unit = { text ->
+        runImport({ CsvStatementImporter.importFromText(text, db.transactionDao(), db) }, onDone = { showPaste = false })
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importUri(uri)
     }
 
     if (showPaste) {
         PasteImportSheet(
             loading = importing,
             onDismiss = { showPaste = false },
-            onImport = { text ->
-                importing = true
-                scope.launch {
-                    summary = try {
-                        CsvStatementImporter.importFromText(text, dao)
-                    } catch (e: Exception) {
-                        ImportSummary(errorMessage = "解析出错：${e.message}")
-                    } finally {
-                        importing = false
-                    }
-                    showPaste = false
-                }
-            }
+            onImport = importText
         )
     }
 
@@ -94,9 +105,27 @@ fun rememberBillImporter(): BillImporter {
     return remember {
         BillImporter(
             pickFile = { picker.launch(arrayOf("*/*")) },
-            openPaste = { showPaste = true }
+            openPaste = { showPaste = true },
+            importUri = importUri,
+            importText = importText
         )
     }
+}
+
+/** 分享导入确认：避免外部应用静默往账本写入流水 */
+@Composable
+fun SharedImportPrompt(shared: SharedImport, importer: BillImporter, onHandled: () -> Unit) {
+    val preview = shared.text?.lineSequence()?.firstOrNull { it.isNotBlank() }?.take(40)
+    MiDialog(
+        onDismissRequest = onHandled,
+        title = "导入分享的账单？",
+        message = if (shared.uri != null) "收到一个账单文件，导入后会自动识别并去重。" else "收到一段账单文本：\n$preview…",
+        confirmText = "导入",
+        onConfirm = {
+            shared.uri?.let(importer.importUri) ?: shared.text?.let(importer.importText)
+            onHandled()
+        }
+    )
 }
 
 @Composable
