@@ -100,4 +100,5 @@ nginx 只把 `/api/auth/`、`/api/user/`、`/api/sync` 转发给记账服务（8
 * 📱 **应用下载与落地主页**：[https://leafy.fxxkopenai.com/ledger.html](https://leafy.fxxkopenai.com/ledger.html)
 * 📦 **APK 直链下载 (v1.5.0)**：[https://leafy.fxxkopenai.com/download/bookkeeping.apk](https://leafy.fxxkopenai.com/download/bookkeeping.apk)
 * 📖 **工程交接与运维排错手册**：[docs/HANDOVER.md](docs/HANDOVER.md)
+* 🧭 **工程经验沉淀（踩坑与验证方法）**：[docs/ENGINEERING_NOTES.md](docs/ENGINEERING_NOTES.md)
 * 📑 **底层调研与架构设计文档**：[docs/RESEARCH.md](docs/RESEARCH.md)

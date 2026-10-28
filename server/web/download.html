@@ -836,14 +836,24 @@
             <p>月度预算进度一目了然；每日趋势柱状图 + 分类环形图，收支一键切换；明细支持搜索。</p>
           </div>
           <div class="card feat wide">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M8 13h2M14 13h2M8 17h2"/></svg></div>
+            <h3>日历视图 · 批量管理</h3>
+            <p>明细可切换成月历：每天花了多少一眼看清，颜色越深花得越多；长按多选，一键批量删除。</p>
+          </div>
+          <div class="card feat wide">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg></div>
             <h3>官方账单导入 · 智能去重</h3>
             <p>支持微信 / 支付宝官方导出的 CSV、XLSX 与 ZIP 账单，导入时自动去重，与自动记账的数据互相补漏。</p>
           </div>
           <div class="card feat wide">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></div>
-            <h3>本地优先 · 无广告 · 账号登录</h3>
-            <p>账目数据优先保存在本机；支持账号注册登录；没有广告。</p>
+            <h3>多设备端到端加密同步</h3>
+            <p>登录同一账号的手机自动同步账单、备注、分类与预算。数据在手机上用你的密码加密后才上传，服务器只存密文、看不到账目；没有广告。</p>
+          </div>
+          <div class="card feat wide">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 7v7M9 11l3 3 3-3M10 18h4"/></svg></div>
+            <h3>应用内一键更新</h3>
+            <p>「我的 → 检查更新」直接下载安装新版本，自动校验安装包完整性，不用再打开网页。</p>
           </div>
         </div>
       </div>
@@ -933,11 +943,15 @@
         </details>
         <details id="faq-upgrade">
           <summary>从旧版本升级，数据会丢吗？</summary>
-          <div class="ans"><p>直接下载新版安装包覆盖安装即可，无需先卸载。卸载 App 会清除本机数据，请避免先卸载再安装。</p></div>
+          <div class="ans"><p>不会。v1.4.0 及以上可在「我的 → 检查更新」里一键升级；更早的版本请下载新版安装包直接覆盖安装，无需先卸载。卸载会清除本机数据，若已登录并开启同步，重新登录后可从云端恢复账单（图片除外）。</p></div>
         </details>
         <details id="faq-privacy">
           <summary>隐私：我的账目数据存在哪里？有广告吗？</summary>
-          <div class="ans"><p>本地优先：账目数据优先保存在你的手机上。App 不含广告。读取通知与无障碍权限仅用于识别支付信息并生成账目。</p></div>
+          <div class="ans"><p>账目首先保存在你的手机上。登录后开启的多设备同步采用端到端加密：密钥由你的密码在手机上生成，服务器只保存无法解读的密文；图片只保存在本机。App 不含广告和统计 SDK，通知与无障碍权限仅用于在本机识别支付信息。</p></div>
+        </details>
+        <details id="faq-sync">
+          <summary>换手机或多台手机怎么同步？忘记密码怎么办？</summary>
+          <div class="ans"><p>在新手机上登录同一账号即可，账单、分类和预算会自动同步，多台手机可同时在线；修改后约 30 秒、打开 App 时和每 6 小时都会自动同步。由于端到端加密，服务器无法重置你的数据密码：忘记密码将无法解密云端数据，但手机本地的账单不受影响。</p></div>
         </details>
         <details id="faq-compat">
           <summary>我的手机能用吗？</summary>
@@ -962,7 +976,7 @@
         <a href="#faq-privacy" data-open>隐私原则</a>
         <a href="#faq">常见问题</a>
       </div>
-      <p>© 2026 智能记账 · 本地优先，无广告</p>
+      <p>© 2026 智能记账 · 端到端加密同步，无广告</p>
     </div>
   </footer>
 

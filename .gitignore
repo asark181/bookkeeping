@@ -13,3 +13,8 @@ __pycache__/
 *.apk
 dist/
 deploy/private/
+
+# IDE 配置
+.idea/
+.claude/
+tools/fixture_names.local.json

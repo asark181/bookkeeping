@@ -21,7 +21,7 @@
   - `POST /api/auth/register`：注册用户，自动创建唯一个人账本，签发 Token。
   - `POST /api/auth/login-password`：校验密码，签发 Token。
   - `GET /api/auth/me`：根据 Bearer Token 返回用户信息与专属账本。
-- [ ] **Step 2: 验证并部署服务端到 Oracle Cloud**
+- [ ] **Step 2: 验证并部署服务端到 云服务器**
   - 运行 `python3 -m py_compile server/app.py` 确保语法通过。
   - 部署到线上服务器并在 8095 端口热重启。
   - 使用 curl 验证注册与登录接口。
@@ -156,7 +156,7 @@
   - `cd android && ./gradlew testDebugUnitTest` 确保 100% 通过。
 - [ ] **Step 2: 编译打包 Debug APK**
   - `cd android && ./gradlew assembleDebug`
-- [ ] **Step 3: 上传部署至 Oracle Cloud**
+- [ ] **Step 3: 上传部署至 云服务器**
   - 上传至 `/opt/nuanyue/web/download/bookkeeping.apk`。
   - 验证 curl 状态码 200。
 - [ ] **Step 4: 提交更改**
