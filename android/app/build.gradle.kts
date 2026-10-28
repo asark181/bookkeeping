@@ -14,8 +14,8 @@ android {
         applicationId = "com.bookkeeping.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.4.0"
+        versionCode = 10
+        versionName = "1.5.0"
 
         buildConfigField("String", "SERVER_URL", "\"https://leafy.fxxkopenai.com\"")
         buildConfigField("String", "SERVER_FALLBACK_URL", "\"https://leafy.fxxkopenai.com\"")

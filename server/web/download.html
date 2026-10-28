@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>智能记账 v1.4.0 下载</title>
-  <meta name="description" content="智能记账 v1.4.0：应用内一键更新、注册登录修复；日历视图按天看开销、批量删除、全新图标；HyperOS 风格设计，全屏「记一笔」、自定义分类、备注与多图附件、预算与图表升级。支持微信/支付宝/美团/京东/抖音支付通知自动记账与官方账单导入，本地优先、无广告。">
+  <title>智能记账 v1.5.0 下载</title>
+  <meta name="description" content="智能记账 v1.5.0：多设备端到端加密同步；应用内一键更新、注册登录修复；日历视图按天看开销、批量删除、全新图标；HyperOS 风格设计，全屏「记一笔」、自定义分类、备注与多图附件、预算与图表升级。支持微信/支付宝/美团/京东/抖音支付通知自动记账与官方账单导入，本地优先、无广告。">
   <meta name="theme-color" content="#F7F8FA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E0F12" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -625,7 +625,7 @@
     <!-- Hero -->
     <section class="hero">
       <div>
-        <div class="pill"><span class="dot"></span>v1.4.0 · 应用内一键更新</div>
+        <div class="pill"><span class="dot"></span>v1.5.0 · 多设备加密同步</div>
         <h1>记账这件小事，<br><span class="grad">也可以很好看。</span></h1>
         <p class="lead">
           为小米 15 Pro / HyperOS 2 重新设计的个人记账 App：支付通知自动入账，全屏「记一笔」一键补录，预算与图表一眼看清。本地优先，无广告。
@@ -637,7 +637,7 @@
             <span>下载 Android 安装包</span>
           </a>
           <div class="dl-meta" aria-live="polite">
-            <span class="chip">版本 <strong id="meta-version">v1.4.0</strong></span>
+            <span class="chip">版本 <strong id="meta-version">v1.5.0</strong></span>
             <span class="chip">更新 <strong>2026-10-28</strong></span>
             <span class="chip" id="meta-size-wrap" hidden>大小 <strong id="meta-size"></strong></span>
             <button type="button" class="chip" id="meta-sha" hidden title="点击复制完整 SHA-256">SHA-256 <code id="meta-sha-short"></code></button>
@@ -708,6 +708,19 @@
         <h2>最近更新</h2>
       </div>
       <div class="card">
+        <div class="release-head">
+          <span class="ver-tag">v1.5.0</span>
+          <h3>多设备加密同步</h3>
+          <span class="date">2026-10-28</span>
+        </div>
+        <ul class="changes">
+          <li><span class="tag new">新增</span><div><b>多设备自动同步</b><p>登录同一账号的手机会自动同步账单、备注、分类和月度预算：修改后约 30 秒、打开应用时、以及每 6 小时自动同步，也可在「我的 → 云同步」手动同步。删除操作同样会同步。</p></div></li>
+          <li><span class="tag new">新增</span><div><b>端到端加密</b><p>同步数据在手机上用你的密码派生的密钥加密，服务器只保存密文、无法读取账目。请牢记密码：忘记密码将无法解密云端数据（本机数据不受影响）。</p></div></li>
+          <li><span class="tag up">优化</span><div><b>多设备同时登录</b><p>在新手机登录不会再让其他设备掉线。</p></div></li>
+          <li><span class="tag keep">说明</span><div><b>图片暂不同步</b><p>图片备注仍只保存在拍摄的那台手机上。</p></div></li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:16px">
         <div class="release-head">
           <span class="ver-tag">v1.4.0</span>
           <h3>应用内更新与稳定性修复</h3>
@@ -935,7 +948,7 @@
 
     <section class="cta-bottom">
       <h2>现在就开始记账</h2>
-      <p>智能记账 v1.4.0 · Android 8.0+</p>
+      <p>智能记账 v1.5.0 · Android 8.0+</p>
       <a href="#top">回到顶部下载</a>
     </section>
   </main>

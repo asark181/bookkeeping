@@ -2,6 +2,7 @@ package com.bookkeeping.app
 
 import android.app.Application
 import com.bookkeeping.app.data.db.AppDatabase
+import com.bookkeeping.app.data.sync.SyncManager
 import com.bookkeeping.app.service.ListenerWatchdog
 import com.bookkeeping.app.update.AppUpdate
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,9 @@ class BookkeepingApp : Application() {
     /** 应用内更新管理器 */
     val updates: AppUpdate by lazy { AppUpdate(this, appScope) }
 
+    /** 多设备加密同步 */
+    val sync: SyncManager by lazy { SyncManager(this, appScope) }
+
     override fun onCreate() {
         super.onCreate()
         // 预热 Room 数据库并补齐默认分类
@@ -28,5 +32,7 @@ class BookkeepingApp : Application() {
         ListenerWatchdog.schedule(this)
         // 应用内更新：定期检查 + 启动时静默检查
         updates.start()
+        // 云同步：监听本机数据变化、定期同步、启动时同步
+        sync.start()
     }
 }

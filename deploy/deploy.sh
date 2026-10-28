@@ -24,7 +24,7 @@ if [[ -n "$APK" ]]; then
   SIZE=$(du -m "$APK" | cut -f1)
   SHA=$(sha256sum "$APK" | awk '{print $1}')
   cat > "$STAGE/web/version.json" <<JSON
-{"versionCode": $VERSION_CODE, "versionName": "$VERSION_NAME", "url": "https://leafy.fxxkopenai.com/", "apkUrl": "https://leafy.fxxkopenai.com/download/bookkeeping.apk", "sha256": "$SHA", "size": "${SIZE}MB", "notes": "v1.4.0 应用内一键更新、注册登录修复、记账准确性修复"}
+{"versionCode": $VERSION_CODE, "versionName": "$VERSION_NAME", "url": "https://leafy.fxxkopenai.com/", "apkUrl": "https://leafy.fxxkopenai.com/download/bookkeeping.apk", "sha256": "$SHA", "size": "${SIZE}MB", "notes": "v1.5.0 多设备端到端加密同步、多设备同时登录"}
 JSON
 fi
 

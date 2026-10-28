@@ -1,5 +1,13 @@
 package com.bookkeeping.app.ui.profile
 
+import kotlinx.coroutines.launch
+import com.bookkeeping.app.ui.components.MiTextField
+import com.bookkeeping.app.ui.common.formatTime
+import com.bookkeeping.app.ui.common.formatShortDate
+import com.bookkeeping.app.data.sync.SyncState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.CloudSync
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -98,6 +106,10 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
     val updates = remember { (context.applicationContext as BookkeepingApp).updates }
     val updateUi by updates.ui.collectAsState()
     val manual by updates.manual.collectAsState()
+    val sync = remember { (context.applicationContext as BookkeepingApp).sync }
+    val syncState by sync.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var showSyncPassword by remember { mutableStateOf(false) }
 
     var profile by remember { mutableStateOf(accountManager.getProfile()) }
     var listenerOn by remember { mutableStateOf(ListenerWatchdog.isNotificationListenerEnabled(context)) }
@@ -116,6 +128,7 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
                 listenerOn = ListenerWatchdog.isNotificationListenerEnabled(context)
                 a11yOn = isAccessibilityOn(context)
                 profile = accountManager.getProfile()
+                sync.refreshState()
                 budget = prefs.monthlyBudgetCents
             }
         }
@@ -161,7 +174,7 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
                         Text(profile?.username ?: "登录 / 注册", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            if (profile != null) "个人账本 · 已登录" else "账单始终保存在本机，登录后可使用账号",
+                            if (profile != null) "个人账本 · 已登录" else "登录后多台手机自动加密同步",
                             fontSize = 13.sp,
                             color = c.textSecondary
                         )
@@ -176,6 +189,49 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
                     StatBlock("账单总数", "${all.size}", Modifier.weight(1f))
                     StatBlock("月度预算", if (budget > 0) formatCents(budget).substringBefore('.') else "未设置", Modifier.weight(1f))
                 }
+            }
+        }
+
+        item {
+            MiSectionTitle("云同步")
+            MiCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                val state = syncState
+                MiListItem(
+                    title = "多设备加密同步",
+                    summary = when (state) {
+                        SyncState.SignedOut -> "登录后自动同步账单、分类与预算，数据端到端加密"
+                        SyncState.NeedsPassword -> "需要验证一次密码以开启同步"
+                        SyncState.Idle -> "已开启，等待首次同步"
+                        SyncState.Syncing -> "正在同步…"
+                        is SyncState.Done -> "已开启 · 上次同步 ${formatShortDate(state.at)} ${formatTime(state.at)}"
+                        is SyncState.Failed -> state.reason
+                    },
+                    icon = Icons.Default.CloudSync,
+                    iconColor = if (state is SyncState.Failed) Color(0xFFF2453D) else Color(0xFF3482FF),
+                    trailing = when (state) {
+                        SyncState.Syncing -> { { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Mi.colors.primary) } }
+                        SyncState.Idle, is SyncState.Done, is SyncState.Failed -> {
+                            {
+                                Text(
+                                    "立即同步",
+                                    fontSize = 13.sp,
+                                    color = Mi.colors.primary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Mi.colors.primarySoft).padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        else -> null
+                    },
+                    onClick = {
+                        when (state) {
+                            SyncState.SignedOut -> showAuth = true
+                            SyncState.NeedsPassword -> showSyncPassword = true
+                            SyncState.Syncing -> Unit
+                            else -> scope.launch { sync.syncNow() }
+                        }
+                    }
+                )
             }
         }
 
@@ -323,6 +379,28 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
             }
         )
     }
+    if (showSyncPassword) {
+        var pwd by remember { mutableStateOf("") }
+        MiDialog(
+            onDismissRequest = { showSyncPassword = false },
+            title = "验证密码",
+            message = "同步数据用你的密码在本机加密，服务器无法读取。请输入「${profile?.username.orEmpty()}」的登录密码。",
+            confirmText = "开启同步",
+            onConfirm = {
+                val username = profile?.username ?: return@MiDialog
+                scope.launch {
+                    accountManager.loginWithPassword(username, pwd)
+                        .onSuccess { p ->
+                            profile = p
+                            sync.onSignedIn(p.username, pwd)
+                        }
+                        .onFailure { Toast.makeText(context, it.message ?: "验证失败", Toast.LENGTH_SHORT).show() }
+                }
+            }
+        ) {
+            MiTextField(value = pwd, onValueChange = { pwd = it }, placeholder = "登录密码", password = true)
+        }
+    }
     if (showBudget) {
         BudgetDialog(onDismiss = { showBudget = false }, onSaved = { budget = it })
     }
@@ -335,6 +413,7 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
             confirmStyle = MiButtonStyle.Danger,
             onConfirm = {
                 accountManager.logout()
+                sync.onSignedOut()
                 profile = null
             }
         )
@@ -354,7 +433,7 @@ fun ProfileScreen(onManageCategories: () -> Unit) {
         MiDialog(
             onDismissRequest = { showPrivacy = false },
             title = "隐私与数据",
-            message = "账单、备注与图片全部保存在本机私有目录，不接入任何广告或统计 SDK。通知与无障碍识别全程在本地完成，不读取密码。",
+            message = "账单优先保存在本机。登录后开启的云同步采用端到端加密：密钥由你的密码在手机上生成，服务器只保存密文，无法读取账目；图片只保存在本机。不接入任何广告或统计 SDK，通知与无障碍识别全程在本地完成，不读取密码。",
             confirmText = "好的",
             dismissText = null
         )

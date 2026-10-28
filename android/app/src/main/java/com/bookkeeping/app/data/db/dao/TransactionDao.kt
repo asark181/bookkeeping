@@ -47,6 +47,10 @@ interface TransactionDao {
     @Query("SELECT name FROM categories WHERE type = :type")
     suspend fun getCategoryNamesByType(type: String): List<String>
 
+    /** 云同步：含软删除墓碑的全部账单 */
+    @Query("SELECT * FROM transactions")
+    suspend fun getAllIncludingDeleted(): List<TransactionRecord>
+
     @Query("SELECT * FROM transactions WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): TransactionRecord?
 

@@ -1,9 +1,11 @@
 package com.bookkeeping.app.data.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
+import java.util.UUID
 
 @Serializable
 @Entity(
@@ -12,7 +14,8 @@ import kotlinx.serialization.Serializable
         Index(value = ["timestamp"]),
         Index(value = ["channel"]),
         Index(value = ["type"]),
-        Index(value = ["externalId"])
+        Index(value = ["externalId"]),
+        Index(value = ["uid"], unique = true)
     ]
 )
 data class TransactionRecord(
@@ -42,8 +45,11 @@ data class TransactionRecord(
     val isDeleted: Boolean = false,
     /** 用户手写备注 */
     val note: String? = null,
-    /** 图片备注文件名列表（换行分隔，存放于 filesDir/attachments） */
-    val images: String? = null
+    /** 图片备注文件名列表（换行分隔，存放于 filesDir/attachments），仅保存在本机，不参与同步 */
+    val images: String? = null,
+    /** 跨设备全局唯一 ID，云同步按它合并 */
+    @ColumnInfo(defaultValue = "")
+    val uid: String = UUID.randomUUID().toString()
 ) {
     val imageList: List<String>
         get() = images?.split('\n')?.filter { it.isNotBlank() }.orEmpty()

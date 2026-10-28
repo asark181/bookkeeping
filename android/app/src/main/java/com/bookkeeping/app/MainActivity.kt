@@ -40,6 +40,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // 从「安装未知应用」授权页返回后继续安装
         (application as BookkeepingApp).updates.onHostResume(this)
+        // 回到前台时，距上次同步超过 5 分钟则同步一次
+        (application as BookkeepingApp).sync.syncIfStale()
     }
 
     override fun onNewIntent(intent: Intent) {

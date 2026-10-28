@@ -68,6 +68,8 @@ class FakeTransactionDao(
 
     override suspend fun getById(id: Long): TransactionRecord? = all().firstOrNull { it.id == id }
 
+    override suspend fun getAllIncludingDeleted(): List<TransactionRecord> = all()
+
     override suspend fun markDeleted(id: Long, now: Long) {
         synchronized(records) {
             val idx = records.indexOfFirst { it.id == id }

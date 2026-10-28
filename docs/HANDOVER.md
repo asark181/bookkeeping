@@ -198,6 +198,16 @@ ssh <YOUR_SERVER_HOST> "sudo journalctl -u bookkeeping.service -f -n 50"
 * 触发：启动时距上次检查超过 6 小时静默检查；WorkManager 每 12 小时检查并对每个新版本发一次通知；「我的 → 检查更新」手动检查并弹出更新面板；有新版本时底栏「我的」亮红点。
 * 安装：APK 下载到 `filesDir/updates/`，经 `FileProvider`（`${applicationId}.fileprovider`）交给系统安装器；缺少「安装未知应用」权限时跳转授权，`MainActivity.onResume` 回来后自动继续安装。签名必须与已安装版本一致（当前为本机 debug 签名）。
 
+## 四-补充、 多设备加密同步（v1.5.0）
+
+* **模型**：整本账作为一个快照（`data/sync/SyncMerge.kt::SyncSnapshot`：账单含墓碑、分类、月度预算），gzip 后用 AES-256-GCM 加密，存于服务端 `sync_blobs(user_id, version, blob, updated_at)`。服务端无法解密。
+* **密钥**：`SyncCrypto.deriveKey` = PBKDF2-HMAC-SHA256(密码, `bookkeeping-sync-v1:<用户名小写>`, 20 万轮, 32 字节)。登录/注册成功时派生，用 Android Keystore 中不可导出的密钥包裹后存入私有偏好（`SyncKeyVault`）。v1.5.0 之前登录的账号在「我的 → 云同步」输入一次密码即可开启。没有改密码功能；若将来增加，需要用新密钥重新加密上传。
+* **合并**：账单以 Room v5 新增的全局 `uid` 为键，`updatedAt` 较新者胜出（相同保留本机）；删除为软删除墓碑参与合并；两台设备各自导入同一官方账单（`externalId` 相同、`uid` 不同）时只保留一条。分类按整体修改时间（`AppPrefs.categoriesUpdatedAt`）、预算按 `budgetUpdatedAt` 较新者胜出。图片字段只保留在本机，不进入快照。
+* **并发**：`PUT /api/sync` 必须带 `base_version`，与服务器当前版本不一致返回 409，客户端重新拉取合并后重试（最多 3 次）。
+* **触发**（`SyncManager`）：启动时；回到前台且距上次超过 5 分钟；Room `InvalidationTracker` 监听 transactions/categories 变化后 30 秒（WorkManager 唯一任务，连续修改顺延）；WorkManager 每 6 小时；「我的 → 立即同步」；登录后立即同步。
+* **会话**：服务端 `sessions(token_hash, user_id, created_at, last_used_at)` 每台设备一条，单账号最多保留最近使用的 10 个，登录新设备不会挤掉其他设备。`users.token_hash` 为旧字段，启动时迁入 `sessions` 后置空。
+* **验证方法**：本机起服务端（`BOOKKEEPING_DATA=<临时目录> uvicorn app:app --port 8095`），测试包临时把 `SERVER_URL` 改为 `http://localhost:8095` 并开启 cleartext、`adb reverse tcp:8095 tcp:8095`；用 Python（`cryptography` 的 AESGCM + `hashlib.pbkdf2_hmac`）模拟第二台设备解密/修改/上传。测试完必须还原构建文件。
+
 ## 五、 编译构建与发布流程
 
 ### 1. 本地快速验证与编译

@@ -15,6 +15,19 @@ interface CategoryDao {
     @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")
     fun getAllFlow(): Flow<List<CategoryEntity>>
 
+    @Query("SELECT * FROM categories ORDER BY sortOrder ASC, id ASC")
+    suspend fun getAllOnce(): List<CategoryEntity>
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAll()
+
+    /** 云同步：以云端分类整体替换本机分类 */
+    @Transaction
+    suspend fun replaceAll(list: List<CategoryEntity>) {
+        deleteAll()
+        insertAll(list)
+    }
+
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun count(): Int
 

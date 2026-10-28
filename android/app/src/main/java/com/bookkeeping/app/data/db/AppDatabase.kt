@@ -19,7 +19,7 @@ import com.bookkeeping.app.data.db.entity.TransactionRecord
         CapturedNotification::class,
         CategoryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +55,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5：交易新增跨设备唯一 uid（云同步用），为已有账单生成随机 uid */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE transactions SET uid = lower(hex(randomblob(16))) WHERE uid = ''")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_uid` ON `transactions` (`uid`)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -62,7 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "bookkeeping.db"
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigrationFrom(1, 2)
                     .build()
                     .also { instance = it }

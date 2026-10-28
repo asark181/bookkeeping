@@ -16,9 +16,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bookkeeping.app.BookkeepingApp
 import com.bookkeeping.app.data.auth.AccountManager
 import com.bookkeeping.app.data.auth.UserProfile
 import com.bookkeeping.app.ui.components.MiButton
@@ -41,6 +43,7 @@ fun AuthModalDialog(
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     MiSheet(onDismissRequest = onDismiss, title = if (isRegisterMode) "注册账号" else "登录") { dismiss ->
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -52,7 +55,7 @@ fun AuthModalDialog(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                if (isRegisterMode) "注册个人账号。账单始终保存在本机，不会上传。" else "登录你的个人账号。账单始终保存在本机。",
+                if (isRegisterMode) "注册后多台手机自动同步账单。数据用你的密码端到端加密，请牢记密码。" else "登录后自动同步账单，本机已有的账单会合并到账号中。",
                 fontSize = 13.sp,
                 color = Mi.colors.textSecondary
             )
@@ -107,7 +110,11 @@ fun AuthModalDialog(
                         val result = if (isRegisterMode) accountManager.register(u, p) else accountManager.loginWithPassword(u, p)
                         isLoading = false
                         result
-                            .onSuccess { profile -> dismiss { onAuthSuccess(profile) } }
+                            .onSuccess { profile ->
+                                // 用密码在本机派生同步密钥，开启加密同步
+                                (context.applicationContext as BookkeepingApp).sync.onSignedIn(profile.username, p)
+                                dismiss { onAuthSuccess(profile) }
+                            }
                             .onFailure { errorMsg = it.message ?: "操作失败，请重试" }
                     }
                 }

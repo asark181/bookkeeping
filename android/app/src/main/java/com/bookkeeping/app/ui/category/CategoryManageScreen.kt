@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.bookkeeping.app.data.category.DefaultCategories
 import com.bookkeeping.app.data.db.AppDatabase
 import com.bookkeeping.app.data.db.entity.CategoryEntity
+import com.bookkeeping.app.data.prefs.AppPrefs
 import com.bookkeeping.app.ui.components.MiButton
 import com.bookkeeping.app.ui.components.MiCard
 import com.bookkeeping.app.ui.components.MiDialog
@@ -76,6 +77,7 @@ fun CategoryManageScreen(onBack: () -> Unit, initialType: String = "EXPENSE") {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.getInstance(context).categoryDao() }
+    val prefs = remember { AppPrefs(context) }
     val all by dao.getAllFlow().collectAsState(initial = emptyList())
     var typeIndex by remember { mutableIntStateOf(if (initialType == "INCOME") 1 else 0) }
     val type = if (typeIndex == 1) "INCOME" else "EXPENSE"
@@ -153,6 +155,7 @@ fun CategoryManageScreen(onBack: () -> Unit, initialType: String = "EXPENSE") {
                             val order = (dao.maxSortOrder(draft.type) ?: 0) + 1
                             dao.insert(draft.copy(sortOrder = order))
                         }
+                        prefs.categoriesUpdatedAt = System.currentTimeMillis()
                         Toast.makeText(context, if (old != null) "已保存" else "已新建分类「${draft.name}」", Toast.LENGTH_SHORT).show()
                     } catch (_: SQLiteConstraintException) {
                         Toast.makeText(context, "已存在同名分类", Toast.LENGTH_SHORT).show()
@@ -170,7 +173,10 @@ fun CategoryManageScreen(onBack: () -> Unit, initialType: String = "EXPENSE") {
             confirmText = "删除",
             confirmStyle = MiButtonStyle.Danger,
             onConfirm = {
-                scope.launch { dao.deleteAndReassign(cat, DefaultCategories.fallbackFor(cat.type)) }
+                scope.launch {
+                    dao.deleteAndReassign(cat, DefaultCategories.fallbackFor(cat.type))
+                    prefs.categoriesUpdatedAt = System.currentTimeMillis()
+                }
             }
         )
     }
