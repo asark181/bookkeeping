@@ -1,10 +1,6 @@
 package com.bookkeeping.app.parser
 
-import com.bookkeeping.app.data.db.dao.TransactionDao
-import com.bookkeeping.app.data.db.entity.CapturedNotification
 import com.bookkeeping.app.data.db.entity.TransactionRecord
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -259,37 +255,7 @@ class CsvStatementImporterTest {
 
         val records = mutableListOf(existingRecordFromNotification)
 
-        val fakeDao = object : TransactionDao {
-            override suspend fun insert(record: TransactionRecord): Long {
-                records.add(record)
-                return records.size.toLong()
-            }
-
-            override suspend fun update(record: TransactionRecord) {
-                val idx = records.indexOfFirst { it.id == record.id }
-                if (idx != -1) {
-                    records[idx] = record
-                }
-            }
-
-            override fun getAllFlow(): Flow<List<TransactionRecord>> = flowOf(records)
-            override suspend fun getByTimeRangeOnce(startTime: Long, endTime: Long): List<TransactionRecord> = emptyList()
-            override fun getByTimeRangeFlow(startTime: Long, endTime: Long): Flow<List<TransactionRecord>> = flowOf(emptyList())
-            override fun getTotalExpenseSince(startTime: Long): Flow<Long?> = flowOf(0L)
-
-            override suspend fun getByExternalId(externalId: String): TransactionRecord? {
-                return records.firstOrNull { it.externalId == externalId }
-            }
-
-            override suspend fun findNearbyByAmount(amountCents: Long, startTime: Long, endTime: Long): List<TransactionRecord> {
-                return records.filter { it.amountCents == amountCents && it.timestamp in startTime..endTime }
-            }
-
-            override suspend fun getById(id: Long): TransactionRecord? = records.firstOrNull { it.id == id }
-            override suspend fun markDeleted(id: Long, now: Long) {}
-            override suspend fun insertNotificationLog(log: CapturedNotification): Long = 0L
-            override fun getRecentNotificationLogsFlow(limit: Int): Flow<List<CapturedNotification>> = flowOf(emptyList())
-        }
+        val fakeDao = FakeTransactionDao(records)
 
         // CSV 数据包含两条：
         // 1. 瑞幸咖啡 15.00元（与已有通知记录时间、金额一致） -> 应合并去重

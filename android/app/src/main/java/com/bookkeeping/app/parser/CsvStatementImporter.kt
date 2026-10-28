@@ -1,15 +1,22 @@
 package com.bookkeeping.app.parser
 
+import androidx.room.RoomDatabase
+import androidx.room.withTransaction
+import com.bookkeeping.app.data.category.CategoryResolver
+import com.bookkeeping.app.data.category.DefaultCategories
 import com.bookkeeping.app.data.db.dao.TransactionDao
 import com.bookkeeping.app.data.db.entity.TransactionRecord
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
-import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
@@ -133,19 +140,7 @@ object CsvStatementImporter {
      * 将 Excel 序列日历浮点数（如 46322.63872685185）转换为标准日期时间字符串
      */
     fun formatExcelSerialDate(serial: Double): String {
-        val days = serial.toLong()
-        val fraction = serial - days
-        val totalSeconds = Math.round(fraction * 86400.0).toInt()
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
-
-        val cal = Calendar.getInstance()
-        cal.clear()
-        cal.set(1899, Calendar.DECEMBER, 30, hours, minutes, seconds)
-        cal.add(Calendar.DAY_OF_YEAR, days.toInt())
-
-        return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(cal.time)
+        return excelSerialToLocal(serial).format(OUTPUT_FORMAT)
     }
 
     /**
@@ -354,13 +349,14 @@ object CsvStatementImporter {
 
         for (i in lines.indices) {
             val line = lines[i]
-            if (line.contains("交易时间") && (line.contains("交易单号") || line.contains("商户单号") || line.contains("交易类型") || line.contains("收/支"))) {
-                headerIndex = i
-                isWeChat = true
-                break
-            } else if (line.contains("交易号") && (line.contains("商家订单号") || line.contains("交易创建时间") || line.contains("付款时间") || line.contains("金额"))) {
+            // 先用支付宝独有列识别：新版支付宝表头同样含「交易时间」「收/支」，必须优先于微信分支判断
+            if (isAlipayHeader(line)) {
                 headerIndex = i
                 isAlipay = true
+                break
+            } else if (line.contains("交易时间") && (line.contains("交易单号") || line.contains("商户单号") || line.contains("交易类型") || line.contains("收/支"))) {
+                headerIndex = i
+                isWeChat = true
                 break
             }
         }
@@ -410,6 +406,34 @@ object CsvStatementImporter {
         return dataRows
     }
 
+    /** 支付宝表头：旧版含「交易号」，新版含「交易订单号」「收/付款方式」「商家订单号」（微信对应列为「交易单号」「支付方式」「商户单号」） */
+    internal fun isAlipayHeader(line: String): Boolean {
+        val hasAlipayColumn = line.contains("交易订单号") || line.contains("收/付款方式") ||
+            line.contains("商家订单号") || line.contains("交易号")
+        val hasTimeOrAmount = line.contains("交易时间") || line.contains("交易创建时间") ||
+            line.contains("付款时间") || line.contains("金额")
+        return hasAlipayColumn && hasTimeOrAmount
+    }
+
+    /**
+     * 收/支列精确判断：只认「支出」「收入」。
+     * 「不计收支」（支付宝余额宝转入转出、退款等）、「/」（微信中性交易：充值提现、理财通、零钱通）一律返回 null 跳过。
+     */
+    internal fun flowToType(flowDirection: String): String? {
+        val flow = flowDirection.trim()
+        if (flow.isEmpty() || flow.contains("不计") || flow.contains("/")) return null
+        return when (flow) {
+            "支出", "已支出" -> "EXPENSE"
+            "收入", "已收入" -> "INCOME"
+            else -> null
+        }
+    }
+
+    /** 支付宝交易状态过滤：只排除未真正成交的记录，「等待确认收货」等已付款状态保留 */
+    private val ALIPAY_SKIP_STATUS = listOf("交易关闭", "已关闭", "失败", "等待付款", "等待买家付款", "未付款", "退款成功", "已撤销", "已取消")
+
+    internal fun shouldSkipAlipayStatus(status: String): Boolean = ALIPAY_SKIP_STATUS.any { status.contains(it) }
+
     private fun parseWeChatRow(cells: List<String>, colMap: Map<String, Int>): StatementRow? {
         val timeStr = getCell(cells, colMap, "交易时间") ?: return null
         val typeStr = getCell(cells, colMap, "交易类型") ?: ""
@@ -421,11 +445,7 @@ object CsvStatementImporter {
         val status = getCell(cells, colMap, "当前状态") ?: ""
         val externalId = getCell(cells, colMap, "交易单号")?.ifBlank { null }
 
-        val type = when {
-            flowDirection.contains("支") -> "EXPENSE"
-            flowDirection.contains("收") -> "INCOME"
-            else -> return null // 中性交易（如充值提现）通常不计入日常收支
-        }
+        val type = flowToType(flowDirection) ?: return null // 中性交易（如充值提现）不计入日常收支
 
         val amountCents = NotificationParser.toCents(amountStr) ?: return null
         val timestamp = parseDateTime(timeStr) ?: return null
@@ -461,11 +481,7 @@ object CsvStatementImporter {
         val flow = cells[4]
         val amountStr = cells[5]
 
-        val type = when {
-            flow.contains("支") -> "EXPENSE"
-            flow.contains("收") -> "INCOME"
-            else -> return null
-        }
+        val type = flowToType(flow) ?: return null
 
         val amountCents = NotificationParser.toCents(amountStr) ?: return null
         val timestamp = parseDateTime(timeStr) ?: return null
@@ -493,23 +509,22 @@ object CsvStatementImporter {
     }
 
     private fun parseAlipayRow(cells: List<String>, colMap: Map<String, Int>): StatementRow? {
-        val externalId = getCell(cells, colMap, "交易号")?.ifBlank { null }
-        val timeStr = getCell(cells, colMap, "付款时间", "交易创建时间", "最近修改时间") ?: return null
+        val externalId = getCell(cells, colMap, "交易号", "交易订单号")?.ifBlank { null }
+        val timeStr = getCell(cells, colMap, "付款时间", "交易时间", "交易创建时间", "最近修改时间")
+            ?.ifBlank { getCell(cells, colMap, "交易创建时间", "最近修改时间") }
+            ?: return null
         val counterparty = getCell(cells, colMap, "交易对方") ?: ""
-        val product = getCell(cells, colMap, "商品名称") ?: ""
+        val product = getCell(cells, colMap, "商品名称", "商品说明") ?: ""
+        val tradeCategory = getCell(cells, colMap, "交易分类") ?: ""
         val amountStr = getCell(cells, colMap, "金额（元）", "金额(元)", "金额") ?: return null
         val flowDirection = getCell(cells, colMap, "收/支") ?: ""
         val status = getCell(cells, colMap, "交易状态") ?: ""
 
-        if (status.contains("关闭") || status.contains("失败") || status.contains("等待")) {
+        if (shouldSkipAlipayStatus(status)) {
             return null
         }
 
-        val type = when {
-            flowDirection.contains("支") -> "EXPENSE"
-            flowDirection.contains("收") -> "INCOME"
-            else -> return null
-        }
+        val type = flowToType(flowDirection) ?: return null
 
         val amountCents = NotificationParser.toCents(amountStr) ?: return null
         val timestamp = parseDateTime(timeStr) ?: return null
@@ -521,7 +536,7 @@ object CsvStatementImporter {
             else -> "支付宝交易"
         }
 
-        val category = inferCategory(merchant, product, "支付宝", type)
+        val category = inferCategory(merchant, "$product $tradeCategory", "支付宝", type)
 
         return StatementRow(
             timestamp = timestamp,
@@ -549,29 +564,30 @@ object CsvStatementImporter {
         return null
     }
 
-    private val DATE_FORMATS = listOf(
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()),
-        SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()),
-        SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
-    )
+    /** 微信/支付宝账单时间均为北京时间，显式使用 Asia/Shanghai，不受设备时区影响 */
+    val STATEMENT_ZONE: ZoneId = ZoneId.of("Asia/Shanghai")
 
-    private fun parseDateTime(str: String): Long? {
-        val clean = str.trim()
+    private val OUTPUT_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
+
+    private val DATE_FORMATS: List<DateTimeFormatter> = listOf(
+        "yyyy-M-d H:mm:ss",
+        "yyyy-M-d H:mm",
+        "yyyy/M/d H:mm:ss",
+        "yyyy/M/d H:mm"
+    ).map { DateTimeFormatter.ofPattern(it, Locale.ROOT) }
+
+    private fun excelSerialToLocal(serial: Double): LocalDateTime {
+        val days = serial.toLong()
+        val totalSeconds = Math.round((serial - days) * 86400.0)
+        return LocalDateTime.of(1899, 12, 30, 0, 0, 0).plusDays(days).plusSeconds(totalSeconds)
+    }
+
+    internal fun parseDateTime(str: String): Long? {
+        val clean = str.trim().replace(Regex("\\s+"), " ")
         val num = clean.toDoubleOrNull()
         if (num != null && num > 30000.0 && num < 80000.0) {
             return try {
-                val cal = Calendar.getInstance()
-                cal.clear()
-                val days = num.toLong()
-                val fraction = num - days
-                val totalSeconds = Math.round(fraction * 86400.0).toInt()
-                val hours = totalSeconds / 3600
-                val minutes = (totalSeconds % 3600) / 60
-                val seconds = totalSeconds % 60
-                cal.set(1899, Calendar.DECEMBER, 30, hours, minutes, seconds)
-                cal.add(Calendar.DAY_OF_YEAR, days.toInt())
-                cal.timeInMillis
+                excelSerialToLocal(num).atZone(STATEMENT_ZONE).toInstant().toEpochMilli()
             } catch (_: Exception) {
                 null
             }
@@ -579,104 +595,122 @@ object CsvStatementImporter {
 
         for (format in DATE_FORMATS) {
             try {
-                val d = format.parse(clean)
-                if (d != null) return d.time
+                return LocalDateTime.parse(clean, format).atZone(STATEMENT_ZONE).toInstant().toEpochMilli()
             } catch (_: Exception) {}
         }
         return null
     }
 
-    fun inferCategory(merchant: String, title: String, channel: String, type: String): String {
-        val combined = "$merchant $title $channel"
-
-        return when {
-            containsAny(combined, "外卖", "美团", "饿了么", "餐饮", "咖啡", "麦当劳", "肯德基", "星巴克", "便利店", "全家", "罗森", "超市", "菜场", "食品", "蛋糕", "茶", "酒", "饭", "面", "餐", "小吃", "老乡鸡", "沙县", "蜜雪冰城", "霸王茶姬") -> "餐饮美食"
-            containsAny(combined, "出行", "滴滴", "打车", "公交", "地铁", "铁路", "12306", "高德", "加油", "停车", "机票", "航空", "车", "青桔", "骑行", "巴士", "同程") -> "交通出行"
-            containsAny(combined, "京东", "淘宝", "天猫", "拼多多", "抖音", "快手", "唯品会", "网购", "商城", "店铺", "购物") -> "网络购物"
-            containsAny(combined, "转账", "红包", "人情", "请收款") -> if (type == "INCOME") "其他收入" else "转账红包"
-            containsAny(combined, "理财", "基金", "余额宝", "零钱通", "定投", "证券") -> "金融理财"
-            containsAny(combined, "水费", "电费", "燃气", "物业", "话费", "宽带", "电信", "移动", "联通", "充值", "共享充电") -> "日常缴费"
-            containsAny(combined, "医院", "药", "诊所", "体检", "健康") -> "医疗健康"
-            type == "INCOME" -> "其他收入"
-            else -> "日常支出"
-        }
-    }
-
-    private fun containsAny(text: String, vararg keywords: String): Boolean {
-        for (k in keywords) {
-            if (text.contains(k, ignoreCase = true)) return true
-        }
-        return false
-    }
+    /** 推断分类：委托给统一的 [CategoryResolver]，收入与支出各用一套规则 */
+    fun inferCategory(merchant: String, title: String, channel: String, type: String): String =
+        CategoryResolver.infer(type, merchant, title, channel)
 
     /**
-     * 直接从文本字符串解析导入（支持用户直接粘贴或从剪贴板读取）
+     * 直接从文本字符串解析导入（支持用户直接粘贴或从剪贴板读取）。
+     * 整体在 IO 线程执行；传入 db 时整批写入包在一个数据库事务中。
      */
-    suspend fun importFromText(text: String, dao: TransactionDao): ImportSummary {
-        val lines = text.lines().map { it.trimEnd('\r', '\n') }
-        val rows = parseStatementRows(lines)
-        return processStatementRows(rows, dao)
-    }
-
-    /**
-     * 从输入流执行完整账单导入（支持 CSV 或 ZIP 压缩包）
-     */
-    suspend fun importFromStream(inputStream: InputStream, dao: TransactionDao): ImportSummary {
-        return try {
-            val bytes = inputStream.readBytes()
-            val lines = decodeBytesToLines(bytes)
+    suspend fun importFromText(
+        text: String,
+        dao: TransactionDao,
+        db: RoomDatabase? = null
+    ): ImportSummary = withContext(Dispatchers.IO) {
+        try {
+            val lines = text.lines().map { it.trimEnd('\r', '\n') }
             val rows = parseStatementRows(lines)
-            processStatementRows(rows, dao)
+            processStatementRows(rows, dao, db)
         } catch (e: Exception) {
             ImportSummary(errorMessage = "导入失败: ${e.message}")
         }
     }
 
     /**
-     * 核心去重与入账处理逻辑
+     * 从输入流执行完整账单导入（支持 CSV、XLSX 或 ZIP 压缩包）。
+     * 整体在 IO 线程执行；传入 db 时整批写入包在一个数据库事务中。
      */
-    suspend fun processStatementRows(rows: List<StatementRow>, dao: TransactionDao): ImportSummary {
+    suspend fun importFromStream(
+        inputStream: InputStream,
+        dao: TransactionDao,
+        db: RoomDatabase? = null
+    ): ImportSummary = withContext(Dispatchers.IO) {
+        try {
+            val bytes = inputStream.readBytes()
+            val lines = decodeBytesToLines(bytes)
+            val rows = parseStatementRows(lines)
+            processStatementRows(rows, dao, db)
+        } catch (e: Exception) {
+            ImportSummary(errorMessage = "导入失败: ${e.message}")
+        }
+    }
+
+    /** 合并时可被账单分类覆盖的「泛化」分类 */
+    private val GENERIC_CATEGORIES = setOf(
+        "日常支出", "未分类", "日常消费", DefaultCategories.FALLBACK_EXPENSE, DefaultCategories.FALLBACK_INCOME
+    )
+
+    /**
+     * 核心去重与入账处理逻辑。
+     * - 查重包含软删除行：命中墓碑（用户已删除的记录）时跳过，不再复活；
+     * - 分类名按 categories 表校正，不存在时落到兜底分类；
+     * - db 不为空时整批写入在一个事务中完成。
+     */
+    suspend fun processStatementRows(
+        rows: List<StatementRow>,
+        dao: TransactionDao,
+        db: RoomDatabase? = null
+    ): ImportSummary {
         if (rows.isEmpty()) {
             return ImportSummary(totalRows = 0, errorMessage = "未能识别到有效的微信或支付宝账单记录，请核对是否包含交易时间与金额")
         }
+        return if (db != null) {
+            db.withTransaction { writeRows(rows, dao) }
+        } else {
+            writeRows(rows, dao)
+        }
+    }
 
+    private suspend fun writeRows(rows: List<StatementRow>, dao: TransactionDao): ImportSummary {
         var newInserted = 0
         var mergedExisting = 0
         var skipped = 0
 
+        val categoryNames = mutableMapOf<String, Set<String>>()
+
         for (row in rows) {
-            // 1. 精确外键匹配去重
+            // 1. 精确外键匹配去重（包含已删除的墓碑行）
             if (row.externalId != null) {
-                val existing = dao.getByExternalId(row.externalId)
+                val existing = dao.getByExternalIdIncludingDeleted(row.externalId)
                 if (existing != null) {
                     skipped++
                     continue
                 }
             }
 
-            // 2. 近邻时间差与金额智能合并去重（处理先前被通知栏捕获但缺乏订单号的记录）
-            // 设定前后 90 秒窗口
-            val nearby = dao.findNearbyByAmount(row.amountCents, row.timestamp - 90_000L, row.timestamp + 90_000L)
-            val unlinkedMatch = nearby.firstOrNull { it.externalId == null && it.type == row.type }
+            // 2. 近邻时间差与金额智能合并去重（处理先前被通知栏捕获但缺乏订单号的记录），前后 90 秒窗口
+            val nearby = dao.findNearbyByAmountIncludingDeleted(row.amountCents, row.timestamp - 90_000L, row.timestamp + 90_000L)
+                .filter { it.externalId == null && it.type == row.type }
+            val liveMatch = nearby.firstOrNull { !it.isDeleted }
+            val tombstone = nearby.firstOrNull { it.isDeleted }
 
-            if (unlinkedMatch != null) {
+            val names = categoryNames.getOrPut(row.type) { CategoryResolver.loadNames(dao, row.type) }
+            val category = CategoryResolver.normalize(row.type, row.category, names)
+
+            if (liveMatch != null) {
                 // 合并补充外部订单号与更详尽的商家信息
-                val updated = unlinkedMatch.copy(
+                val updated = liveMatch.copy(
                     externalId = row.externalId,
-                    merchant = if (unlinkedMatch.merchant.isNullOrBlank() || unlinkedMatch.merchant == unlinkedMatch.channel) {
-                        row.merchant ?: unlinkedMatch.merchant
+                    merchant = if (liveMatch.merchant.isNullOrBlank() || liveMatch.merchant == liveMatch.channel) {
+                        row.merchant ?: liveMatch.merchant
                     } else {
-                        unlinkedMatch.merchant
+                        liveMatch.merchant
                     },
-                    category = if (unlinkedMatch.category == "日常支出" || unlinkedMatch.category == "未分类" || unlinkedMatch.category == "日常消费") {
-                        row.category
-                    } else {
-                        unlinkedMatch.category
-                    },
+                    category = if (liveMatch.category in GENERIC_CATEGORIES) category else liveMatch.category,
                     updatedAt = System.currentTimeMillis()
                 )
                 dao.update(updated)
                 mergedExisting++
+            } else if (tombstone != null) {
+                // 用户删除过的同一笔交易：保持删除状态，跳过
+                skipped++
             } else {
                 // 全新入账
                 val newRecord = TransactionRecord(
@@ -684,7 +718,7 @@ object CsvStatementImporter {
                     type = row.type,
                     channel = row.channel,
                     merchant = row.merchant,
-                    category = row.category,
+                    category = category,
                     timestamp = row.timestamp,
                     rawText = row.rawText,
                     externalId = row.externalId,
