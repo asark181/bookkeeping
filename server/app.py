@@ -1,7 +1,7 @@
 """Bookkeeping account & encrypted-backup server.
 
 - 账号：用户名 + 密码（PBKDF2 加盐），登录令牌只保存 sha256 哈希。
-- 备份：端到端加密的不透明密文（客户端尚未接入），服务端无法读取账目。
+- 同步：客户端用密码派生的密钥端到端加密整本账，服务端只保存不透明密文与版本号，无法读取账目。
 所有错误统一返回 JSON：{"status": "error", "detail": "<中文提示>"}。
 """
 import hashlib
@@ -124,6 +124,30 @@ def init_db() -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ledgers_user ON ledgers(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_token ON users(token_hash)")
+        # 每台设备一条会话，登录新设备不会挤掉其他设备
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL
+            )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
+        # users.token_hash 为单会话时代遗留，迁入 sessions 后保持已登录设备有效
+        conn.execute(
+            "INSERT OR IGNORE INTO sessions (token_hash, user_id, created_at, last_used_at) "
+            "SELECT token_hash, id, last_login_at, last_login_at FROM users WHERE token_hash IS NOT NULL"
+        )
+        conn.execute("UPDATE users SET token_hash = NULL WHERE token_hash IS NOT NULL")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS sync_blobs (
+                user_id INTEGER PRIMARY KEY,
+                version INTEGER NOT NULL,
+                blob TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )"""
+        )
         # 验证码登录已下线（曾存在万能码），清理残留表
         conn.execute("DROP TABLE IF EXISTS otp_codes")
 
@@ -345,10 +369,33 @@ def _ensure_ledger(conn: sqlite3.Connection, user_id: int, now: int) -> dict:
     return {"name": "个人账本", "space": space}
 
 
+MAX_SESSIONS = 10
+
+
 def _issue_token(conn: sqlite3.Connection, user_id: int, now: int) -> str:
+    """为本次登录的设备新建会话；每个账号最多保留最近 MAX_SESSIONS 台设备"""
     token = secrets.token_hex(32)
-    conn.execute("UPDATE users SET token_hash = ?, last_login_at = ? WHERE id = ?", (_token_hash(token), now, user_id))
+    conn.execute(
+        "INSERT INTO sessions (token_hash, user_id, created_at, last_used_at) VALUES (?, ?, ?, ?)",
+        (_token_hash(token), user_id, now, now),
+    )
+    conn.execute(
+        "DELETE FROM sessions WHERE user_id = ? AND token_hash NOT IN "
+        "(SELECT token_hash FROM sessions WHERE user_id = ? ORDER BY last_used_at DESC, created_at DESC LIMIT ?)",
+        (user_id, user_id, MAX_SESSIONS),
+    )
+    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now, user_id))
     return token
+
+
+def _session_user(conn: sqlite3.Connection, token: str) -> tuple[int, str] | None:
+    row = conn.execute(
+        "SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
+        (_token_hash(token),),
+    ).fetchone()
+    if row:
+        conn.execute("UPDATE sessions SET last_used_at = ? WHERE token_hash = ?", (int(time.time()), _token_hash(token)))
+    return row
 
 
 def _auth_response(user_id: int, username: str, token: str, ledger: dict) -> dict:
@@ -416,9 +463,56 @@ def get_current_user(request: Request, authorization: str = Header(None)):
     token = authorization[len("Bearer "):].strip()
 
     with _lock, closing(db()) as conn, conn:
-        row = conn.execute("SELECT id, username FROM users WHERE token_hash = ?", (_token_hash(token),)).fetchone()
+        row = _session_user(conn, token)
         if not row:
             raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
         ledger = _ensure_ledger(conn, row[0], int(time.time()))
 
     return {"status": "ok", "user": {"id": row[0], "username": row[1]}, "ledger": ledger}
+
+
+# ───────────────────────── 加密同步 ─────────────────────────
+
+class SyncPayload(BaseModel):
+    """base_version 为客户端合并时依据的服务器版本；与当前版本不一致返回 409，客户端需重新拉取合并"""
+    base_version: int = Field(..., ge=0)
+    blob: str = Field(..., min_length=1, max_length=MAX_BLOB)
+
+
+def _user_from_token(conn: sqlite3.Connection, authorization: str | None) -> int:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未登录或登录已失效")
+    row = _session_user(conn, authorization[len("Bearer "):].strip())
+    if not row:
+        raise HTTPException(status_code=401, detail="登录已失效，请重新登录")
+    return row[0]
+
+
+@app.get("/api/sync")
+def get_sync(request: Request, authorization: str = Header(None)):
+    _check_rate(_client_ip(request))
+    with closing(db()) as conn, conn:
+        user_id = _user_from_token(conn, authorization)
+        row = conn.execute("SELECT version, blob, updated_at FROM sync_blobs WHERE user_id = ?", (user_id,)).fetchone()
+    if not row:
+        return {"status": "ok", "version": 0, "blob": None, "updated_at": 0}
+    return {"status": "ok", "version": row[0], "blob": row[1], "updated_at": row[2]}
+
+
+@app.put("/api/sync")
+def put_sync(payload: SyncPayload, request: Request, authorization: str = Header(None)):
+    _check_rate(_client_ip(request))
+    now_ms = int(time.time() * 1000)
+    with _lock, closing(db()) as conn, conn:
+        user_id = _user_from_token(conn, authorization)
+        row = conn.execute("SELECT version FROM sync_blobs WHERE user_id = ?", (user_id,)).fetchone()
+        current = row[0] if row else 0
+        if payload.base_version != current:
+            raise HTTPException(status_code=409, detail="云端已有更新，请重新同步")
+        new_version = current + 1
+        conn.execute(
+            "INSERT INTO sync_blobs (user_id, version, blob, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET version = excluded.version, blob = excluded.blob, updated_at = excluded.updated_at",
+            (user_id, new_version, payload.blob, now_ms),
+        )
+    return {"status": "ok", "version": new_version, "updated_at": now_ms}

@@ -70,8 +70,8 @@ def test_legacy_migration_and_register_claims_phone_account(legacy_dir):
     assert r.status_code == 200
     token = r.json()["token"]
     with sqlite3.connect(legacy_dir / "bookkeeping.db") as conn:
-        stored = conn.execute("SELECT token_hash FROM users WHERE id = 1").fetchone()[0]
-    assert stored == hashlib.sha256(token.encode()).hexdigest()
+        stored = {r[0] for r in conn.execute("SELECT token_hash FROM sessions WHERE user_id = 1")}
+    assert hashlib.sha256(token.encode()).hexdigest() in stored
 
     # 已有密码的账号不能被重复注册
     r = client.post("/api/auth/register", json={"username": "18000000001", "password": "999999"})
@@ -101,3 +101,41 @@ def test_fresh_db_register_login_and_json_errors(tmp_path):
 
     # 验证码登录接口已下线
     assert client.post("/api/auth/login", json={"phone": "18000000000", "code": "888888"}).status_code == 404
+
+
+def test_sync_requires_auth_and_detects_conflicts(tmp_path):
+    mod = load_app(tmp_path)
+    client = TestClient(mod.app)
+    assert client.get("/api/sync").status_code == 401
+
+    token = client.post("/api/auth/register", json={"username": "bob", "password": "secret1"}).json()["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/sync", headers=auth).json()["version"] == 0
+
+    r = client.put("/api/sync", headers=auth, json={"base_version": 0, "blob": "cipher-1"})
+    assert r.status_code == 200 and r.json()["version"] == 1
+    # 另一台设备基于旧版本上传：冲突
+    r = client.put("/api/sync", headers=auth, json={"base_version": 0, "blob": "cipher-stale"})
+    assert r.status_code == 409 and r.json()["status"] == "error"
+    r = client.put("/api/sync", headers=auth, json={"base_version": 1, "blob": "cipher-2"})
+    assert r.json()["version"] == 2
+    body = client.get("/api/sync", headers=auth).json()
+    assert body["version"] == 2 and body["blob"] == "cipher-2"
+
+    # 其他用户读不到
+    other = client.post("/api/auth/register", json={"username": "eve", "password": "secret1"}).json()["token"]
+    assert client.get("/api/sync", headers={"Authorization": f"Bearer {other}"}).json()["version"] == 0
+
+
+def test_multiple_devices_stay_logged_in(tmp_path):
+    mod = load_app(tmp_path)
+    client = TestClient(mod.app)
+    a = client.post("/api/auth/register", json={"username": "carol", "password": "secret1"}).json()["token"]
+    b = client.post("/api/auth/login-password", json={"username": "carol", "password": "secret1"}).json()["token"]
+    for t in (a, b):
+        assert client.get("/api/sync", headers={"Authorization": f"Bearer {t}"}).status_code == 200
+    # 超过 10 台设备时只保留最近使用的 10 个会话
+    for _ in range(10):
+        client.post("/api/auth/login-password", json={"username": "carol", "password": "secret1"})
+    with sqlite3.connect(tmp_path / "bookkeeping.db") as conn:
+        assert conn.execute("SELECT count(*) FROM sessions").fetchone()[0] == 10
