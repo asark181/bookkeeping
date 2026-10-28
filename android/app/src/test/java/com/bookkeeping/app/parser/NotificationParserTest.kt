@@ -2,7 +2,9 @@ package com.bookkeeping.app.parser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationParserTest {
@@ -191,5 +193,105 @@ class NotificationParserTest {
         assertNotNull(parsed2)
         assertEquals(1280L, parsed2?.amountCents)
         assertEquals("EXPENSE", parsed2?.type)
+    }
+
+    // ---------- 方向优先判断 / 微信仅解析服务号 ----------
+
+    @Test
+    fun testAlipayIncomingTransferIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_ALIPAY, "支付宝", "张三向你转账10.00元")
+        assertNotNull(parsed)
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(1000L, parsed?.amountCents)
+        assertEquals("张三", parsed?.merchant)
+    }
+
+    @Test
+    fun testAlipayOutgoingTransferStillExpense() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_ALIPAY, "支付宝", "你向李四转账20.00元")
+        assertEquals("EXPENSE", parsed?.type)
+        assertEquals(2000L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testAlipayRefundIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_ALIPAY, "支付宝", "退款到账：美团订单退款12.50元")
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(1250L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testWeChatReceivedTransferIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信支付", "收到转账¥100.00")
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(10000L, parsed?.amountCents)
+
+        val parsed2 = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信转账", "张三向你转账¥66.00，已收款")
+        assertEquals("INCOME", parsed2?.type)
+        assertEquals(6600L, parsed2?.amountCents)
+        assertEquals("张三", parsed2?.merchant)
+    }
+
+    @Test
+    fun testWeChatReceivedRedPacketIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信红包", "你收到一个红包0.88元，已存入零钱")
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(88L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testWeChatCollectionAssistantIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信收款助手", "微信支付收款12.00元")
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(1200L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testWeChatOutgoingTransferAcceptedIsExpense() {
+        // 「对方已收款」包含「已收款」，但对自己是支出
+        val parsed = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信支付", "转账¥50.00 对方已收款")
+        assertEquals("EXPENSE", parsed?.type)
+        assertEquals(5000L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testWeChatFriendChatIsIgnored() {
+        assertNull(NotificationParser.parse(NotificationParser.PKG_WECHAT, "李四", "我转账100元给你"))
+        assertNull(NotificationParser.parse(NotificationParser.PKG_WECHAT, "李四", "[转账]请收款"))
+        assertNull(NotificationParser.parse(NotificationParser.PKG_WECHAT, "相亲相爱一亲友", "妈妈: [微信红包]恭喜发财，大吉大利 5元"))
+        // 群名里带「微信支付」也不算服务号
+        assertNull(NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信支付交流群", "已支付¥25.00"))
+    }
+
+    @Test
+    fun testWeChatServiceTitleWithCount() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_WECHAT, "微信支付(2条)", "[2条]已支付¥25.00")
+        assertEquals("EXPENSE", parsed?.type)
+        assertEquals(2500L, parsed?.amountCents)
+    }
+
+    @Test
+    fun testSuspectedPayment() {
+        assertTrue(NotificationParser.isSuspectedPayment(NotificationParser.PKG_WECHAT, "李四", "[转账]请收款"))
+        assertTrue(NotificationParser.isSuspectedPayment(NotificationParser.PKG_WECHAT, "微信支付", "你有一笔交易"))
+        assertFalse(NotificationParser.isSuspectedPayment(NotificationParser.PKG_WECHAT, "李四", "晚上一起吃饭吗"))
+        assertFalse(NotificationParser.isSuspectedPayment(NotificationParser.PKG_WECHAT, "李四", "我转账100元给你"))
+        assertFalse(NotificationParser.isSuspectedPayment(NotificationParser.PKG_JD, "京东", "新品上架，快来看看"))
+    }
+
+    @Test
+    fun testGeneralRefundIsIncome() {
+        val parsed = NotificationParser.parse(NotificationParser.PKG_MEITUAN, "美团", "您的订单退款25.00元已到账")
+        assertEquals("INCOME", parsed?.type)
+        assertEquals(2500L, parsed?.amountCents)
+        assertEquals("美团支付退款", parsed?.merchant)
+    }
+
+    @Test
+    fun testDetectDirection() {
+        assertEquals("INCOME", NotificationParser.detectDirection("张三向你转账10元"))
+        assertEquals("EXPENSE", NotificationParser.detectDirection("向张三转账10元"))
+        assertEquals("EXPENSE", NotificationParser.detectDirection("对方已收款"))
+        assertEquals("EXPENSE", NotificationParser.detectDirection("收款方：全家便利店 已支付¥10"))
     }
 }

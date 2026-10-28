@@ -3,6 +3,8 @@ package com.bookkeeping.app.parser
 import android.util.Log
 import com.bookkeeping.app.data.db.dao.TransactionDao
 import com.bookkeeping.app.data.db.entity.TransactionRecord
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 跨渠道通知与多通道去重合并引擎
@@ -16,6 +18,42 @@ object DedupHelper {
     const val BASE_WINDOW_MS = 60_000L
     const val MERCHANT_WINDOW_MS = 120_000L
     const val SAME_CHANNEL_NO_MERCHANT_MS = 10_000L
+
+    /**
+     * 全局写入锁：通知监听与无障碍服务可能并发收到同一笔交易，
+     * 「查重 + 插入」必须串行，否则两边都查不到对方、各插一条。
+     */
+    val writeMutex = Mutex()
+
+    sealed class DedupResult {
+        data class Inserted(val id: Long) : DedupResult()
+        data class Duplicate(val existing: TransactionRecord) : DedupResult()
+    }
+
+    /**
+     * 在全局锁内完成查重与入账：命中重复时（可选）合并渠道/商户信息，否则插入新记录。
+     */
+    suspend fun insertIfNotDuplicate(
+        dao: TransactionDao,
+        record: TransactionRecord,
+        now: Long = System.currentTimeMillis(),
+        mergeOnDuplicate: Boolean = true
+    ): DedupResult = writeMutex.withLock {
+        val duplicate = findDuplicate(
+            dao = dao,
+            amountCents = record.amountCents,
+            type = record.type,
+            merchant = record.merchant,
+            channel = record.channel,
+            now = now
+        )
+        if (duplicate != null) {
+            if (mergeOnDuplicate) mergeIfDuplicate(dao, duplicate, record.channel, record.merchant)
+            DedupResult.Duplicate(duplicate)
+        } else {
+            DedupResult.Inserted(dao.insert(record))
+        }
+    }
 
     /**
      * 寻找可能重复的历史交易记录
@@ -74,7 +112,15 @@ object DedupHelper {
                 updatedAt = System.currentTimeMillis()
             )
             dao.update(updated)
-            Log.d(TAG, "已合并更新交易记录 id=${existing.id}: channel=${updated.channel}, merchant=${updated.merchant}")
+            safeLog(TAG, "已合并更新交易记录 id=${existing.id}: channel=${updated.channel}, merchant=${updated.merchant}")
+        }
+    }
+
+    /** 单元测试（JVM）环境下 android.util.Log 未实现，吞掉异常 */
+    private fun safeLog(tag: String, msg: String) {
+        try {
+            Log.d(tag, msg)
+        } catch (_: Throwable) {
         }
     }
 

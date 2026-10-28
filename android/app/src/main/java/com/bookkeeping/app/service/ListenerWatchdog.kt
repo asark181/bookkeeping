@@ -6,10 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.util.Log
 
 object ListenerWatchdog {
@@ -49,33 +49,26 @@ object ListenerWatchdog {
     }
 
     /**
-     * 针对已开启权限但在系统后台被临时解除绑定的情况，重新切换组件状态触发系统重新绑定
+     * 只在监听确实断开时（已授权但服务未与系统绑定）请求系统重新绑定。
+     * 不再通过 disable/enable 组件强制重启：那样无论是否正常都会断开监听，期间的通知会丢失。
      */
-    fun rebindServiceIfEnabled(context: Context) {
-        if (!isNotificationListenerEnabled(context)) return
+    fun rebindIfDisconnected(context: Context): Boolean {
         val app = context.applicationContext
-        val cn = ComponentName(app, PaymentNotificationListener::class.java)
-        val pm = app.packageManager
-        try {
-            pm.setComponentEnabledSetting(
-                cn,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            pm.setComponentEnabledSetting(
-                cn,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                PackageManager.DONT_KILL_APP
-            )
-            Log.i(TAG, "已触发 NotificationListenerService 重新绑定")
+        if (!isNotificationListenerEnabled(app)) return false
+        if (PaymentNotificationListener.isConnected) return false
+        return try {
+            NotificationListenerService.requestRebind(ComponentName(app, PaymentNotificationListener::class.java))
+            Log.i(TAG, "监听未连接，已请求 NotificationListenerService 重新绑定")
+            true
         } catch (e: Exception) {
-            Log.w(TAG, "重新绑定服务异常", e)
+            Log.w(TAG, "requestRebind 异常", e)
+            false
         }
     }
 
     fun tick(context: Context) {
         val app = context.applicationContext
-        rebindServiceIfEnabled(app)
+        rebindIfDisconnected(app)
         schedule(app)
     }
 
