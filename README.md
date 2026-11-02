@@ -45,11 +45,9 @@ android/   Kotlin + Jetpack Compose + Room
   service/   通知监听服务
 server/    同步服务（:8095）和下载页
 deploy/    部署脚本、systemd、备份 cron
-docs/      交接文档、调研笔记
+docs/      调研笔记
 ```
 
 ## 文档
 
-- [docs/HANDOVER.md](docs/HANDOVER.md)：架构、数据模型、服务端和发布流程
-- [docs/ENGINEERING_NOTES.md](docs/ENGINEERING_NOTES.md)：踩过的坑和验证方法
 - [docs/RESEARCH.md](docs/RESEARCH.md)：HyperOS 通知监听和保活调研
