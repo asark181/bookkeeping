@@ -48,14 +48,6 @@ deploy/    部署脚本、systemd、备份 cron
 docs/      交接文档、调研笔记
 ```
 
-## 部署
-
-```bash
-deploy/deploy.sh <ssh-key> dist/bookkeeping-vX.Y.Z.apk
-```
-
-服务器和暖月、吃了吗共用一个 nginx 站点，`/api/version` 和 `/download/` 下的默认文件名属于暖月，别覆盖。详见 [docs/HANDOVER.md](docs/HANDOVER.md)。
-
 ## 文档
 
 - [docs/HANDOVER.md](docs/HANDOVER.md)：架构、数据模型、服务端和发布流程
